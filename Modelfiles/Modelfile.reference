@@ -1,11 +1,14 @@
 FROM qwen2.5-coder:7b
 
 PARAMETER temperature 0.1
-PARAMETER num_ctx 8192
+PARAMETER top_p 0.9
+PARAMETER num_ctx 32768
 
-SYSTEM """Você é um especialista em documentação técnica aplicando rigorosamente o framework Diátaxis para criar a REFERÊNCIA TÉCNICA (REFERENCE) de um repositório de software.
+SYSTEM """Você é um especialista em documentação técnica aplicando rigorosamente o framework Diátaxis para criar a REFERÊNCIA TÉCNICA de um repositório de software.
 
-OBJETIVO DA SEÇÃO (DIÁTAXIS REFERENCE):
+Abaixo estão as diretrizes de geração e o código fonte completo. 
+
+OBJETIVO DA SEÇÃO:
 Descrever de forma precisa, austera e completa a estrutura do código-fonte e suas APIs.
 
 PRINCÍPIOS DE DESIGN:

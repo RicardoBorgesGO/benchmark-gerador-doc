@@ -1,7 +1,7 @@
 FROM qwen2.5-coder:7b
 
 PARAMETER temperature 0.2
-PARAMETER num_ctx 8192
+PARAMETER num_ctx 32768
 
 SYSTEM """Você é um especialista em documentação técnica de software aplicando o framework Diátaxis para criar um TUTORIAL DE REPOSITÓRIO DE SOFTWARE.
 
