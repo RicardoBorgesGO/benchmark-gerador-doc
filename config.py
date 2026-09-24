@@ -2,10 +2,10 @@ REPO_PATH = r"F:\UFG\M14 - Trabalho de Conclusão de Curso\snake"
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 OUTPUT_DIR = "autodoc"
 FILE_TO_MODEL = [
-    # ("01_tutorials.md", "doc-diataxis-tutorial"),
-    # ("02_how_to_guides.md", "doc-diataxis-howto"),
-    # ("03_reference.md", "doc-diataxis-reference"),
-    # ("04_explanation.md", "doc-diataxis-explanation"),
+    ("01_tutorials.md", "doc-diataxis-tutorial"),
+    ("02_how_to_guide.md", "doc-diataxis-howto"),
+    ("03_reference.md", "doc-diataxis-reference"),
+    ("04_explanation.md", "doc-diataxis-explanation"),
     ("C4_architecture_level1.md", "doc-c4-level1"),  
     ("C4_architecture_level2.md", "doc-c4-level2"),  
     ("C4_architecture_level3.md", "doc-c4-level3")  
