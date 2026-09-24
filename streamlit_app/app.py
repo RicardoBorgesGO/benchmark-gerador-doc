@@ -17,7 +17,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("📚 Guia de Projeto LLM – Piloto local")
+st.title("📚 Guia de Projeto LLM - Piloto local")
 st.caption("Piloto experimental para geração de documentação técnica de repositórios com Ollama.")
 
 with st.sidebar:

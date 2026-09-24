@@ -1,0 +1,9 @@
+bert-score>=0.3.13
+fastapi==0.141.1
+GitPython==3.1.62
+nltk>=3.9
+ollama>=0.5,<1
+pydantic==2.13.5
+requests>=2.32,<3
+streamlit>=1.45,<2
+

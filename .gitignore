@@ -1,2 +1,10 @@
-__pycache__
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.streamlit/
+tmp/
+outputs/
+.DS_Store
 autodoc/
+autodoc_/

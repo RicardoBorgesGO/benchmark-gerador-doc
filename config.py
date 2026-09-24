@@ -1,4 +1,3 @@
-REPO_PATH = r"F:\UFG\M14 - Trabalho de Conclusão de Curso\snake"
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 OUTPUT_DIR = "autodoc"
 FILE_TO_MODEL = [
