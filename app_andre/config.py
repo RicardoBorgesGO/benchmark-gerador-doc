@@ -1,4 +1,4 @@
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
+OLLAMA_API_URL = "http://localhost:11434/api/chat"
 OUTPUT_DIR = "autodoc"
 FILE_TO_MODEL = [
     ("01_tutorials.md", "doc-diataxis-tutorial"),
