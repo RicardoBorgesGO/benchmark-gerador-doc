@@ -1,0 +1,5 @@
+fastapi[standard]==0.141.1
+GitPython==3.1.62
+pydantic==2.13.5
+requests>=2.32,<3
+streamlit>=1.45,<2

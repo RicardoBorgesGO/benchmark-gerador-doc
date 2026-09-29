@@ -1,0 +1,15 @@
+# Sobrescrita usada apenas pelo devcontainer.
+# Caminhos relativos resolvem a partir de app_ricardo/ (diretório do primeiro compose file).
+services:
+  dev:
+    build: .
+    command: ["sleep", "infinity"]
+    environment:
+      OLLAMA_API_URL: http://ollama:11434/api/chat
+      API_URL: http://localhost:8000/generate
+    volumes:
+      - .:/workspace:cached
+    working_dir: /workspace
+    depends_on:
+      ollama:
+        condition: service_healthy
