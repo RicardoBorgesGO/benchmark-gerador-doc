@@ -28,7 +28,8 @@ def scan_repository(path):
     selected_files = 0
 
     for root, _, files in os.walk(path):
-        if any(folder in root.split(os.sep) for folder in IGNORABLE_FOLDERS):
+        # If a folder is in ignorables list or starts with "."
+        if any(folder in IGNORABLE_FOLDERS or (folder.startswith('.')) for folder in root.split(os.sep)):
             continue
         for file in files:
             total_files += 1
@@ -72,16 +73,19 @@ def generate(repository_path):
         
         user_content = (
             "Abaixo está o código-fonte completo do repositório delimitado pelas tags <repository_code>.\n"
-            "Analise todo o código fornecido e gere o documento seguindo ESTRITAMENTE o formato e as regras do seu SYSTEM PROMPT.\n\n"
+            "Analise o código e gere OBRIGATORIAMENTE o documento específico solicitado no seu SYSTEM PROMPT.\n\n"
             f"<repository_code>\n{repository_code}\n</repository_code>\n\n"
-            "RELEMBRE AS REGRAS CRÍTICAS:\n"
-            "1. Escreva o documento EXCLUSIVAMENTE em Português (Brasil).\n"
-            "2. Fonte Única da Verdade: Extraia informações EXCLUSIVAMENTE do texto contido na tag <repository_code>.\n"
-            "3. Retorne APENAS o texto Markdown puro, sem saudações, preâmbulos ou explicações antes ou depois.\n"
-            "4. Quando gerar diagramas Mermaid, siga estritamente a sintaxe solicitada sem usar a sintaxe nativa C4.\n"
-            "5. Comece a sua resposta com o caractere `#` do título principal"
+            "REGRAS DE EXECUÇÃO:\n"
+            "1. Idioma: EXCLUSIVAMENTE Português (Brasil).\n"
+            "2. Fonte da Verdade: Use APENAS o código dentro de <repository_code>.\n"
+            "3. ADAPTAÇÃO DE DOMÍNIO: Classifique internamente o software em sua categoria (API, Game, Lib, CLI, UI/App ou Plugin) "
+            "e use APENAS a terminologia e tipos de exemplos próprios dessa categoria no documento.\n"
+            "4. FOCO EXCLUSIVO DO DOCUMENTO: Não gere uma visão geral genérica. Execute ESTRITAMENTE a estrutura, "
+            "o propósito e o nível de detalhe definidos no seu SYSTEM PROMPT.\n"
+            "5. Formato: Retorne APENAS Markdown puro. Para diagramas Mermaid, use sintaxe `flowchart TB/LR` pura.\n"
+            "6. Início Imediato: Comece sua resposta diretamente com o caractere `#` do título principal."
         )
-        
+
         payload = {
             "model": model_name,
             "messages": [

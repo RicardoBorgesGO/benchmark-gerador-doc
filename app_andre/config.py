@@ -9,7 +9,7 @@ FILE_TO_MODEL = [
     ("C4_architecture_level2.md", "doc-c4-level2"),  
     ("C4_architecture_level3.md", "doc-c4-level3")  
 ]
-IGNORABLE_FOLDERS = ['node_modules', '.git', '__pycache__', 'env', 'venv', 'dist', 'build']
+IGNORABLE_FOLDERS = ['node_modules', '.git', '__pycache__', 'env', 'venv', 'dist', 'build', 'test', 'tests']
 VALID_FILE_EXTENSIONS = (
     # Main Codebase
     '.py', '.js', '.jsx', '.ts', '.tsx', '.go', '.java', '.cs', '.cpp', '.c', '.h', '.hpp', '.rs', '.php', '.rb',

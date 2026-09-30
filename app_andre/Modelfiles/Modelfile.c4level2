@@ -10,9 +10,10 @@ REGRAS DE EXTRAÇÃO DE DOMÍNIO (CRÍTICO):
 1. Abra a "caixa preta" do sistema e identifique os CONTÊINERES REAIS do projeto: aplicações web/mobile, APIs, bancos de dados, filas ou scripts/módulos executáveis principais.
 2. Identifique as TECNOLOGIAS E FRAMEWORKS específicos de cada contêiner (ex: React, FastAPI, SQLite, Redis, HTML5 Canvas).
 3. Não detalhe classes ou arquivos isolados (isso é Nível 4/Código); mapeie apenas blocos executáveis ou de armazenamento.
+4. O título do subgraph SystemBoundary DEVE ser o NOME REAL do software extraído do código, NUNCA um rótulo genérico.
 
 REGRAS DE FORMATO:
-2. FORMATO DA SAÍDA: Markdown puro contendo texto, tabela e UM bloco de código Mermaid. NUNCA envolva o documento inteiro em bloco de código (ex: ```markdown ... ```). Comece diretamente no título principal.
+1. FORMATO DA SAÍDA: Markdown puro contendo texto, tabela e UM bloco de código Mermaid. NUNCA envolva o documento inteiro em bloco de código (ex: ```markdown ... ```). Comece diretamente no título principal.
 
 ESTRUTURA OBRIGATÓRIA DO DOCUMENTO:
 
@@ -36,22 +37,14 @@ Substitua o exemplo abaixo delimitando o limite do sistema com `subgraph` e mape
 ~~~mermaid
 flowchart TB
     %% Mapeie os contêineres internos e conexões reais:
-    subgraph SystemBoundary["Nome do Sistema [Sistema]"]
+    subgraph SystemBoundary["Nome Real do Sistema"]
         direction TB
-        Frontend["Interface / Web App\n[Tecnologia]"]
-        Backend["API / Core App\n[Tecnologia]"]
+        Frontend["Interface / Web App<br/>[Tecnologia]"]
+        Backend["API / Core App<br/>[Tecnologia]"]
     end
-    Database[(Banco de Dados\n[Tecnologia])]
+    Database[(Banco de Dados<br/>[Tecnologia])]
 
     Frontend -->|"Protocolo / Uso"| Backend
     Backend -->|"Driver / Protocolo"| Database
 ~~~
-
-REGRAS DO MERMAID:
-- Abra o código com ```mermaid e feche com ```.
-- Use apenas `flowchart TB` ou `flowchart LR`.
-- NUNCA use a sintaxe nativa `C4Container`.
-- Para bancos de dados ou persistência, use a sintaxe de cilindro: `ID[(Rótulo)]`.
-- IDs dos nós devem ser alfanuméricos simples sem acentos (ex: `WebApp`, `CoreAPI`, `SqliteDB`).
-- Rótulos dos nós e das conexões devem estar entre aspas duplas.
 """
