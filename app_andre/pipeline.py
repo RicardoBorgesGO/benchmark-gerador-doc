@@ -1,6 +1,5 @@
 import os
 import time
-import glob
 import stat
 import shutil
 import logging
@@ -148,5 +147,5 @@ def generate(repository_path):
     logging.info("=" * 45)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     generate("https://github.com/tartley/colorama")
