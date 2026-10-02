@@ -60,7 +60,10 @@ def evaluate_repository_run(generated_doc_dir, readme_path):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     results = evaluate_repository_run(OUTPUT_DIR, "./README.md")
-    logging.info("=" * 45)
-    logging.info("SEMANTIC EVALUATION RESULTS")
-    logging.info("=" * 45)
-    logging.info(results)
+    logging.info("╔" + "═" * 58 + "╗")
+    logging.info("║" + " SEMANTIC EVALUATION RESULTS ".center(58) + "║")
+    logging.info("╠" + "═" * 58 + "╣")
+    for metric, val in results.items():
+        val_str = f"{val:.4f}" if isinstance(val, float) else str(val)
+        logging.info(f"║  • {metric:<35} : {val_str:>16}║")
+    logging.info("╚" + "═" * 58 + "╝")

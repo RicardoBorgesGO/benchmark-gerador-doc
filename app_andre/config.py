@@ -7,7 +7,7 @@ FILE_TO_MODEL = [
     ("04_explanation.md", "doc-diataxis-explanation"),
     ("C4_architecture_level1.md", "doc-c4-level1"),  
     ("C4_architecture_level2.md", "doc-c4-level2"),  
-    ("C4_architecture_level3.md", "doc-c4-level3")  
+    ("C4_architecture_level3.md", "doc-c4-level3")
 ]
 IGNORABLE_FOLDERS = ['node_modules', '.git', '__pycache__', 'env', 'venv', 'dist', 'build', 'test', 'tests']
 VALID_FILE_EXTENSIONS = (
