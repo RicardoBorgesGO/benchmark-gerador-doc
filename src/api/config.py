@@ -1,4 +1,4 @@
-OLLAMA_API_URL = "http://localhost:11434/api/chat"
+OLLAMA_API_URL = "https://ollama-api-agents.sissa.ufg.br/api/chat"
 OUTPUT_DIR = "autodoc"
 FILE_TO_MODEL = [
     ("01_tutorials.md", "doc-diataxis-tutorial"),

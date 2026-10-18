@@ -85,6 +85,8 @@ def generate(repository_path):
             "6. Início Imediato: Comece sua resposta diretamente com o caractere `#` do título principal."
         )
 
+        breakpoint()
+
         payload = {
             "model": model_name,
             "messages": [

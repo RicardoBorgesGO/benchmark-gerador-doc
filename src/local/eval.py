@@ -12,7 +12,6 @@ nltk.download("punkt", quiet=True)
 nltk.download("punkt_tab", quiet=True)
 
 def evaluate_documentation(generated_text, reference_text):
-    """Calculates METEOR and BERTScore metrics comparing generated docs against a reference README."""
     generated_tokens = nltk.word_tokenize(generated_text)
     reference_tokens = nltk.word_tokenize(reference_text)
 
