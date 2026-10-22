@@ -1,5 +1,6 @@
-OLLAMA_API_URL = "https://myapi.com/api/chat"
+OLLAMA_API_URL = "http://localhost:11434/api/chat"
 OUTPUT_DIR = "autodoc"
+CSV_REPORT_FILE = "generation_metrics.csv"
 FILE_TO_MODEL = [
     ("01_tutorials.md", "doc-diataxis-tutorial"),
     ("02_how_to_guide.md", "doc-diataxis-howto"),
@@ -22,4 +23,13 @@ VALID_FILE_EXTENSIONS = (
     
     # Automation and Databases
     '.sh', '.ps1', '.bat', '.cmd', '.sql', '.prisma'
+    
+    # Images
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp', '.ico', '.tiff', '.psd',
+
+    # Videos & Audio
+    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mp3', '.wav', '.ogg', '.flac',
+    
+    # Binaries & Archives
+    '.zip', '.tar', '.gz', '.rar', '.7z', '.exe', '.dll', '.so', '.bin', '.pdf'
 )
