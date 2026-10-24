@@ -1,11 +1,11 @@
 import os
-import nltk
 import stat
 import shutil
 import logging
 import pandas as pd
 from git import Repo
 from config import *
+from transformers import AutoTokenizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -73,22 +73,29 @@ def append_csv_metric(model_name, repository, num_tokens, selected_files, vram_r
         
     df.to_csv(TOKENIZATION_REPORT_FILE, index=False, encoding="utf-8")
 
-def estimate_context_vram_gb(num_tokens, num_layers=32, hidden_dim=4096, bytes_per_element=2):
-    # KV Cache/token: 2 (Key and Value) * layers * hidden_dim * bytes
-    bytes_per_token = 2 * num_layers * hidden_dim * bytes_per_element
-    total_bytes = num_tokens * bytes_per_token
-    return total_bytes / (1024 ** 3)
+def calculate_required_vram(model_name, input_tokens, gpu_overhead_gb=1.0):   
+    cfg = MODEL_ARCHITECTURES[model_name]
+    
+    # 1. Model weights memory (in GB)
+    # Formula: (Parameters in billions * bits) / 8
+    weight_vram = (cfg["parameters_b"] * cfg["quant_bits"]) / 8.0
+    
+    # 2. KV Cache memory (in GB)
+    # KV Cache size = 2 * num_layers * hidden_size * seq_len * bytes_per_element
+    # Assuming FP16 (2 bytes per element). Factor 2 accounts for Key and Value.
+    kv_elements = 2 * cfg["num_layers"] * cfg["embedding_length"] * input_tokens
+    kv_cache_vram = (kv_elements * 2) / (1024 ** 3)  # Convert bytes to GB
+    total_vram = weight_vram + kv_cache_vram + gpu_overhead_gb
+    
+    return round(total_vram, 2)
 
 if not os.path.exists(TOKENIZATION_REPORT_FILE):
     df = pd.DataFrame({}, columns=["model", "repository", "num_tokens", "selected_files", "vram_required_gb"])
     df.to_csv(TOKENIZATION_REPORT_FILE, index=False)
 
-for model in OLLAMA_MODELS:
-    for repo_url in REPOSITORIES:
-        repo_folder = download_github_repository(repo_url)
-        if not os.path.exists(repo_folder):
-            logging.error(f"Skipping repository {repo_url} due to cloning failure.")
-            continue
+for repo_url in REPOSITORIES:
+    repo_folder = download_github_repository(repo_url)
+    for model in OLLAMA_MODELS:
         repository_code, stats = scan_repository(repo_folder)
         user_content = (
             "Abaixo está o código-fonte completo do repositório delimitado pelas tags <repository_code>.\n"
@@ -105,7 +112,8 @@ for model in OLLAMA_MODELS:
             "6. Início Imediato: Comece sua resposta diretamente com o caractere `#` do título principal."
         )
 
-        tokens = nltk.word_tokenize(user_content)
-        vram_required_gb = (estimate_context_vram_gb(len(tokens)) + MODEL_TO_VRAM_USAGE_GB[model]) / 10**9
-        append_csv_metric(model, repo_url, len(tokens), stats["selected_files"], round(vram_required_gb, 2))
-        shutil.rmtree(repo_folder, onexc=remove_readonly)
+        tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
+        prompt_tokens = tokenizer.encode(user_content)
+        vram_required_gb = calculate_required_vram(model, len(prompt_tokens))
+        append_csv_metric(model, repo_url, len(prompt_tokens), stats["selected_files"], round(vram_required_gb, 2))
+    shutil.rmtree(repo_folder, onexc=remove_readonly)

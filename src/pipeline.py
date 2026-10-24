@@ -6,7 +6,7 @@ import logging
 import pandas as pd
 import requests
 from git import Repo
-from config import OLLAMA_API_URL, OUTPUT_DIR, FILE_TO_MODEL, IGNORABLE_FOLDERS, VALID_FILE_EXTENSIONS, CSV_REPORT_FILE
+from config import *
 from prompts import SYSTEM_PROMPTS
 
 def remove_readonly(func, path, exc_info):
@@ -75,32 +75,22 @@ def append_csv_metric(repo_url, doc_name, model_name, prompt_tokens, eval_tokens
 def run_pipeline(repository_urls, ollama_models):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    for model in ollama_models:
-        for repo_url in repository_urls:
+    for repo_url in repository_urls:
+        repo_folder = download_github_repository(repo_url)
+        for model in ollama_models:
             logging.info(f"PROCESSING REPOSITORY: {repo_url}")
             
             total_start_time = time.perf_counter()
-            
-            repo_folder = download_github_repository(repo_url)
-            if not os.path.exists(repo_folder):
-                logging.error(f"Skipping repository {repo_url} due to cloning failure.")
-                continue
-                
             repository_code, stats = scan_repository(repo_folder)
-
             repo_name = repo_url.split("/")[-1].replace(".git", "")
             repo_output_dir = os.path.join(OUTPUT_DIR, repo_name)
             os.makedirs(repo_output_dir, exist_ok=True)
 
-            for output_file, model_name in FILE_TO_MODEL:
-                if output_file not in SYSTEM_PROMPTS:
-                    logging.warning(f"Prompt not found in SYSTEM_PROMPTS for: {output_file}")
-                    continue
-
+            for output_file, system_prompt in SYSTEM_PROMPTS.items():
                 file_output_path = os.path.join(repo_output_dir, output_file)
                 system_prompt = SYSTEM_PROMPTS[output_file]
 
-                logging.info(f"Generating [{output_file}] with model [{model_name}]...")
+                logging.info(f"Generating {output_file}...")
                 start_time = time.perf_counter()
                 
                 user_content = (
@@ -128,7 +118,7 @@ def run_pipeline(repository_urls, ollama_models):
                 }
                 
                 try:
-                    response = requests.post(OLLAMA_API_URL, json=payload, timeout=600)
+                    response = requests.post(f"{OLLAMA_API_URL}/api/chat", json=payload, timeout=600)
                     
                     if response.status_code == 200:
                         res_data = response.json()
@@ -148,12 +138,12 @@ def run_pipeline(repository_urls, ollama_models):
                             f"Tokens In: {prompt_tokens} | Tokens Out: {eval_tokens}"
                         )
                     else:
-                        logging.error(f"API error for model [{model_name}]: Status {response.status_code} - {response.text}")
+                        logging.error(f"API error: Status {response.status_code} - {response.text}")
                         
                 except requests.exceptions.Timeout:
-                    logging.error(f"Timeout while generating document [{output_file}] with model [{model_name}].")
+                    logging.error(f"Timeout while generating document {output_file}.")
                 except Exception as e:
-                    logging.error(f"Connection or execution failure for model [{model_name}]: {e}")
+                    logging.error(f"Execution failure: {e}")
 
             shutil.rmtree(repo_folder, onexc=remove_readonly)
             total_elapsed = time.perf_counter() - total_start_time
@@ -161,11 +151,4 @@ def run_pipeline(repository_urls, ollama_models):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-    ollama_models = ["qwen3.6:27b"]
-    
-    repositories_to_test = [
-        "https://github.com/scotch-io/node-todo",
-    ]
-    
-    run_pipeline(repositories_to_test, ollama_models)
+    run_pipeline(REPOSITORIES, OLLAMA_MODELS)
