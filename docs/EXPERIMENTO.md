@@ -8,7 +8,7 @@ VRAM, CPU até 12 núcleos, 64 GB RAM).
 ## 1. Variáveis
 
 **Independentes:** repositório (porte: pequeno/médio/grande; com e sem docs),
-modelo (e quantização), `num_ctx`, estratégia (`baseline`, `flat` e `rag`),
+modelo (e quantização), `num_ctx`, estratégia (`baseline`, `rag`), contexto (`completo`, `topk`) e seleção dos k arquivos (`embeddings`, `heuristica`),
 técnicas ligadas/desligadas (plano, reparo Mermaid, RAG top-k).
 
 **Dependentes (todas já registradas em `runs.csv`):**
@@ -41,7 +41,7 @@ para a revisão humana.
 2. **Contaminação:** repositórios muito populares podem estar no treino do modelo.
    Inclua projetos pequenos, recentes ou obscuros e reporte os resultados por grupo.
 3. **Truncamento:** se `chamadas_truncadas > 0`, o modelo não viu todo o código;
-   reporte isso como limitação das estratégias que enviam o repositório inteiro, não descarte a linha.
+   reporte isso como limitação do contexto `completo`, não descarte a linha.
 4. **Repetições:** ≥3 por configuração (seed muda por repetição, registrada no CSV);
    reporte média±desvio e teste pareado.
 5. **Juiz:** use família diferente do gerador e valide contra humanos (amostra de
@@ -65,9 +65,18 @@ A hipótese compara com a escrita manual, então são necessários dois números
 Pedir ao revisor uma nota 1–5 de utilidade para onboarding por seção,
 para triangular com as métricas automáticas.
 
-## 5. Ablação sugerida (ordem)
+## 5. Comparações previstas
 
-1. `baseline` × `flat` × `rag` (efeito da recuperação e do prompt).
-2. `rag` sem plano; sem reparo Mermaid; com top-k 4/8/16.
-3. `num_ctx` 8k/16k/32k (e KV cache quantizado, se disponível).
-4. Modelos 7B × 14B (trade-off qualidade × VRAM × tempo).
+Cada comparação muda apenas um fator (o benchmark resume as cinco primeiras):
+
+| Comparação | Fator isolado |
+|---|---|
+| `baseline/topk/embeddings` × `baseline/completo` | Recuperação, com os prompts originais |
+| `rag/topk/embeddings` × `rag/completo` | Recuperação, com os prompts por seção |
+| `rag/topk/embeddings` × `rag/topk/heuristica` | Embeddings × escolha fixa dos mesmos k arquivos |
+| `rag/completo` × `baseline/completo` | Prompts, plano e mapa de assinaturas (a seleção de arquivos também difere) |
+| `rag/topk/embeddings` × `baseline/completo` | Pipeline novo contra o original |
+
+Em repositórios com `k` arquivos ou menos, `topk` e `completo` enviam o mesmo conjunto; use repositórios médios e grandes para essas comparações.
+
+Variações adicionais: `rag` sem plano, sem reparo de Mermaid, `k` em 4, 8 e 16, `num_ctx` em 8k, 16k e 32k, e modelos 7B × 14B.

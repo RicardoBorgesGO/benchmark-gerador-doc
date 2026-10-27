@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .selection import priority
+
 IGNORED_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "node_modules",
     "vendor", "dist", "build", "target", "__pycache__",
@@ -109,15 +111,7 @@ def collect_files(
                 continue
 
     def score(item: FileInfo) -> tuple[int, int, str]:
-        name = Path(item.path).name.lower()
-        priority = 0
-        if name.startswith("readme"):
-            priority += 100
-        if name in {"pyproject.toml", "package.json", "pom.xml", "build.gradle"}:
-            priority += 80
-        if Path(item.path).suffix.lower() in {".py", ".java", ".ts", ".tsx", ".js", ".php"}:
-            priority += 20
-        return (-priority, -item.lines, item.path)
+        return (-priority(item.path), -item.lines, item.path)
 
     candidates.sort(key=score)
     return candidates[:max_files]

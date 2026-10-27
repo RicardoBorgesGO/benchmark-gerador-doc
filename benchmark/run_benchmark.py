@@ -18,7 +18,8 @@ from docgen.pipeline import run_pipeline
 from docgen.repository import load_from_github
 
 RUN_FIELDS = [
-    "repo", "porte", "modelo", "estrategia", "num_ctx", "repeticao", "seed",
+    "repo", "porte", "modelo", "configuracao", "estrategia", "contexto", "selecao", "top_k",
+    "num_ctx", "repeticao", "seed",
     "arquivos_na_entrada", "categoria", "cenario", "tempo_total_s",
     "tokens_prompt", "tokens_saida", "chamadas", "chamadas_truncadas",
     "mermaid_reparado", "meteor", "bert_precision", "bert_recall", "bert_f1",
@@ -27,7 +28,7 @@ RUN_FIELDS = [
     "vram_estimada_gb", "erro",
 ]
 SECTION_FIELDS = [
-    "repo", "modelo", "estrategia", "num_ctx", "repeticao", "secao",
+    "repo", "modelo", "configuracao", "num_ctx", "repeticao", "secao",
     "tempo_s", "tokens_prompt", "tokens_saida", "chamadas_truncadas",
     "arquivos_recuperados", "mermaid_reparado",
 ]
@@ -46,6 +47,15 @@ def append_row(path: Path, fields: list[str], row: dict) -> None:
         writer.writerow(row)
 
 
+def build_configs(strategies: list[str], contexts: list[str], selections: list[str]) -> list[tuple[str, str, str]]:
+    configs = []
+    for strategy in strategies:
+        for context in contexts:
+            for selection in (selections if context == "topk" else ["-"]):
+                configs.append((strategy, context, selection))
+    return configs
+
+
 def tier_of(url: str) -> str:
     for tier, urls in cfg.REPOSITORIES.items():
         if url in urls:
@@ -58,7 +68,9 @@ def main() -> None:
     ap.add_argument("--repos", nargs="*", help="URLs GitHub (substitui --tier)")
     ap.add_argument("--tier", choices=list(cfg.REPOSITORIES), nargs="*", help="porte(s) de repositório")
     ap.add_argument("--models", nargs="*", default=cfg.MODELS["8gb"])
-    ap.add_argument("--strategies", nargs="*", default=cfg.STRATEGIES, choices=["baseline", "flat", "rag"])
+    ap.add_argument("--strategies", nargs="*", default=cfg.STRATEGIES, choices=["baseline", "rag"])
+    ap.add_argument("--contexts", nargs="*", default=cfg.CONTEXTS, choices=["completo", "topk"])
+    ap.add_argument("--selections", nargs="*", default=cfg.SELECTIONS, choices=["embeddings", "heuristica"])
     ap.add_argument("--num-ctx", nargs="*", type=int, default=cfg.NUM_CTX_VALUES)
     ap.add_argument("--repeats", type=int, default=cfg.REPEATS)
     ap.add_argument("--max-files", type=int, default=cfg.MAX_FILES)
@@ -76,6 +88,7 @@ def main() -> None:
         tiers = args.tier or ["pequeno"]
         repos = [u for t in tiers for u in cfg.REPOSITORIES[t]]
 
+    configs = build_configs(args.strategies, args.contexts, args.selections)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     runs_csv, sections_csv = out / "runs.csv", out / "sections.csv"
@@ -95,14 +108,17 @@ def main() -> None:
 
             for model in args.models:
                 for num_ctx in args.num_ctx:
-                    for strategy in args.strategies:
+                    for strategy, context, selection in configs:
+                        config_id = f"{strategy}/{context}/{selection}"
                         for rep in range(1, args.repeats + 1):
                             seed = cfg.BASE_SEED + rep
-                            tag = f"{model} | {strategy} | ctx={num_ctx} | r{rep}"
-                            print(f"  -> {tag}")
+                            print(f"  -> {model} | {config_id} | ctx={num_ctx} | r{rep}")
                             row = {
                                 "repo": repo.name, "porte": tier_of(url), "modelo": model,
-                                "estrategia": strategy, "num_ctx": num_ctx, "repeticao": rep,
+                                "configuracao": config_id, "estrategia": strategy,
+                                "contexto": context, "selecao": selection,
+                                "top_k": args.top_k if context == "topk" else 0,
+                                "num_ctx": num_ctx, "repeticao": rep,
                                 "seed": seed, "arquivos_na_entrada": len(files),
                                 "vram_estimada_gb": estimate_vram_gb(model, num_ctx),
                             }
@@ -111,8 +127,8 @@ def main() -> None:
                                 with GpuSampler() as gpu:
                                     result = run_pipeline(
                                         repo.path, repo.name, files, client,
-                                        strategy=strategy, embed_model=args.embed_model,
-                                        top_k=args.top_k,
+                                        strategy=strategy, context=context, selection=selection,
+                                        embed_model=args.embed_model, top_k=args.top_k,
                                     )
                                 if not args.no_judge:
                                     run_judge(result, client, args.judge_model)
@@ -126,12 +142,12 @@ def main() -> None:
                                     "vram_pico_mb": gpu.peak_vram_mb if gpu.available else "",
                                 })
 
-                                doc_dir = out / "docs" / slug(repo.name) / slug(model) / strategy / f"r{rep}"
+                                doc_dir = out / "docs" / slug(repo.name) / slug(model) / slug(config_id) / f"r{rep}"
                                 doc_dir.mkdir(parents=True, exist_ok=True)
                                 for s in result.sections:
                                     (doc_dir / s.section.filename).write_text(s.content, encoding="utf-8")
                                     append_row(sections_csv, SECTION_FIELDS, {
-                                        "repo": repo.name, "modelo": model, "estrategia": strategy,
+                                        "repo": repo.name, "modelo": model, "configuracao": config_id,
                                         "num_ctx": num_ctx, "repeticao": rep, "secao": s.section.key,
                                         "tempo_s": round(s.elapsed_seconds, 2),
                                         "tokens_prompt": s.prompt_tokens, "tokens_saida": s.output_tokens,

@@ -7,11 +7,12 @@ import numpy as np
 from docgen import baseline
 from docgen.analyzer import collect_files, find_reference_doc
 from docgen.edit_rate import compute_edit_rate
-from docgen.evaluation import count_judge_issues, evaluate_run
+from docgen.evaluation import count_judge_issues, evaluate_run, run_judge
 from docgen.hardware import estimate_vram_gb
 from docgen.ollama_client import OllamaClient
-from docgen.pipeline import STRATEGIES, run_pipeline
-from docgen.sections import SECTIONS
+from docgen.pipeline import CONTEXTS, SELECTIONS, STRATEGIES, run_pipeline
+from docgen.selection import heuristic_top_k
+from docgen.sections import JUDGE_SYSTEM_PROMPT, SECTIONS
 from docgen.verifier import verify_document
 
 
@@ -30,6 +31,8 @@ class FakeClient(OllamaClient):
         self.usage.output_tokens += 50
         if self.prompt_size >= int(self.num_ctx * 0.98):
             self.usage.truncated_calls += 1
+        if system == JUDGE_SYSTEM_PROMPT:
+            return "* primeira critica\n* segunda critica\n"
         return "# Titulo\nVeja `app.py`, `calcular_total()` e `Inexistente.py`.\n"
 
     def embed(self, texts, model="x"):
@@ -63,44 +66,90 @@ class DocgenTests(unittest.TestCase):
         self.assertNotIn("docs/guia.md", names)
         self.assertIn("Calcula totais", find_reference_doc(self.repo))
 
-    def test_all_strategies_generate_all_sections(self):
+    def test_all_combinations_generate_all_sections(self):
         files = collect_files(self.repo, exclude_docs=True)
         for strategy in STRATEGIES:
-            result = run_pipeline(self.repo, "demo", files, FakeClient(), strategy=strategy)
-            self.assertEqual(len(result.sections), len(SECTIONS))
-            self.assertEqual(result.strategy, strategy)
-            self.assertGreater(result.usage.prompt_tokens, 0)
+            for context in CONTEXTS:
+                for selection in SELECTIONS:
+                    result = run_pipeline(
+                        self.repo, "demo", files, FakeClient(),
+                        strategy=strategy, context=context, selection=selection,
+                    )
+                    self.assertEqual(len(result.sections), len(SECTIONS))
+                    self.assertEqual((result.strategy, result.context), (strategy, context))
+                    self.assertGreater(result.usage.prompt_tokens, 0)
+
+    def test_invalid_options_raise(self):
+        for kwargs in ({"strategy": "x"}, {"context": "x"}, {"selection": "x"}):
+            with self.assertRaises(ValueError):
+                run_pipeline(self.repo, "demo", [], FakeClient(), **kwargs)
 
     def test_baseline_scan_filters(self):
-        code, stats = baseline.scan_repository(self.repo)
-        self.assertIn("--- app.py ---", code)
-        self.assertNotIn("test_app.py", code)
-        self.assertNotIn("segredo.py", code)
-        self.assertNotIn("Calcula totais", code)
+        entries, stats = baseline.scan_files(self.repo)
+        paths = {p for p, _ in entries}
+        self.assertEqual(paths, {"app.py"})
         self.assertEqual(stats["selected_files"], 1)
 
-    def test_baseline_uses_original_prompts(self):
+    def test_baseline_completo_uses_original_prompts_and_whole_repo(self):
         client = FakeClient()
-        run_pipeline(self.repo, "demo", [], client, strategy="baseline", use_mermaid_repair=False)
+        run_pipeline(self.repo, "demo", [], client, strategy="baseline", context="completo", use_mermaid_repair=False)
         self.assertEqual(len(client.systems), len(SECTIONS))
         self.assertEqual(len(set(client.systems)), len(SECTIONS))
-        self.assertTrue(all("<repository_code>" in p for p in client.prompts))
+        self.assertTrue(all("--- app.py ---" in p for p in client.prompts))
+        self.assertTrue(all("código-fonte completo" in p for p in client.prompts))
         for section in SECTIONS:
             self.assertIn(section.key, baseline.DOCUMENT_BY_SECTION)
 
-    def test_rag_uses_less_code_than_flat_on_many_files(self):
-        for i in range(30):
-            (self.repo / f"mod_{i}.py").write_text(f"def f{i}():\n    return {i}\n" * 20)
+    def make_many_files(self, n=30):
+        for i in range(n):
+            (self.repo / f"mod_{i}.py").write_text(f"def f{i}():\n    return {i}\n" * (i + 1))
+
+    def test_baseline_topk_embeddings_sends_only_k_files(self):
+        self.make_many_files()
+        client = FakeClient()
+        run_pipeline(self.repo, "demo", [], client, strategy="baseline", context="topk",
+                     selection="embeddings", top_k=3, use_mermaid_repair=False)
+        for prompt in client.prompts:
+            self.assertLessEqual(prompt.count("\n--- "), 3)
+            self.assertIn("selecionados por relevância", prompt)
+            self.assertNotIn("código-fonte completo", prompt)
+        self.assertEqual(set(client.systems), {baseline.system_prompt_for(s.key) for s in SECTIONS})
+
+    def test_topk_heuristica_sends_same_files_in_every_section(self):
+        self.make_many_files()
+        client = FakeClient()
+        run_pipeline(self.repo, "demo", [], client, strategy="baseline", context="topk",
+                     selection="heuristica", top_k=3, use_mermaid_repair=False)
+        headers = {tuple(line for line in p.splitlines() if line.startswith("--- ")) for p in client.prompts}
+        self.assertEqual(len(headers), 1)
+        self.assertEqual(len(next(iter(headers))), 3)
+        self.assertTrue(all("principais arquivos" in p for p in client.prompts))
+
+    def test_heuristic_prefers_manifest_then_larger_files(self):
+        entries = [("a.txt", "x"), ("big.py", "l\n" * 50), ("small.py", "l\n"), ("package.json", "{}")]
+        picked = [p for p, _ in heuristic_top_k(entries, 3)]
+        self.assertEqual(picked, ["package.json", "big.py", "small.py"])
+
+    def test_rag_topk_sends_less_code_than_rag_completo(self):
+        self.make_many_files()
         files = collect_files(self.repo, exclude_docs=True)
-        rag, flat = FakeClient(), FakeClient()
-        run_pipeline(self.repo, "demo", files, rag, strategy="rag", top_k=3, use_plan_step=False)
-        run_pipeline(self.repo, "demo", files, flat, strategy="flat")
-        self.assertLess(sum(map(len, rag.prompts)), sum(map(len, flat.prompts)))
+        topk, full = FakeClient(), FakeClient()
+        run_pipeline(self.repo, "demo", files, topk, strategy="rag", context="topk", top_k=3, use_plan_step=False)
+        run_pipeline(self.repo, "demo", files, full, strategy="rag", context="completo", use_plan_step=False)
+        self.assertLess(sum(map(len, topk.prompts)), sum(map(len, full.prompts)))
+
+    def test_judge_feedback_is_counted(self):
+        files = collect_files(self.repo, exclude_docs=True)
+        result = run_pipeline(self.repo, "demo", files, FakeClient(), strategy="rag")
+        run_judge(result, FakeClient(), "outro-modelo")
+        self.assertTrue(all(s.judge_feedback for s in result.sections))
+        row = evaluate_run(result, self.repo, "")
+        self.assertEqual(row["falhas_juiz_total"], 2 * len(SECTIONS))
 
     def test_truncation_detected(self):
         files = collect_files(self.repo, exclude_docs=True)
         client = FakeClient(num_ctx=4096, prompt_size=4096)
-        result = run_pipeline(self.repo, "demo", files, client, strategy="flat")
+        result = run_pipeline(self.repo, "demo", files, client, strategy="baseline", context="completo")
         self.assertGreater(result.usage.truncated_calls, 0)
 
     def test_verifier(self):

@@ -9,9 +9,13 @@ from .analyzer import build_tree, detect_project_category, read_many, summarize_
 from .embeddings import EmbeddingIndex
 from .ollama_client import OllamaClient, UsageStats
 from .repo_map import build_repo_map, extract_signature
+from .selection import heuristic_top_k
 from .sections import SECTIONS, Section, domain_adaptation_hint
 
-STRATEGIES = ("rag", "flat", "baseline")
+STRATEGIES = ("baseline", "rag")
+CONTEXTS = ("completo", "topk")
+SELECTIONS = ("embeddings", "heuristica")
+MAX_RETRIEVED_CHARS = 4000
 
 SYSTEM_PROMPT = """
 Você é um engenheiro de software responsável por produzir documentação técnica
@@ -54,6 +58,9 @@ class PipelineResult:
     tree: str
     stats: dict
     strategy: str = "rag"
+    context: str = "topk"
+    selection: str = "embeddings"
+    top_k: int = 0
     model: str = ""
     num_ctx: int = 0
     files_in_input: int = 0
@@ -67,16 +74,14 @@ class PipelineResult:
         return "\n\n---\n\n".join(parts)
 
 
-def _full_code(files_with_content: list[tuple[str, str]]) -> str:
-    return "\n".join(f"--- {p} ---\n{c}\n" for p, c in files_with_content)
-
-
 def run_pipeline(
     repo_path: Path,
     repo_name: str,
     files,
     client: OllamaClient,
     strategy: str = "rag",
+    context: str = "topk",
+    selection: str = "embeddings",
     embed_model: str = "nomic-embed-text",
     top_k: int = 8,
     use_plan_step: bool = True,
@@ -86,6 +91,10 @@ def run_pipeline(
 ) -> PipelineResult:
     if strategy not in STRATEGIES:
         raise ValueError(f"strategy deve ser uma de {STRATEGIES}")
+    if context not in CONTEXTS:
+        raise ValueError(f"context deve ser um de {CONTEXTS}")
+    if selection not in SELECTIONS:
+        raise ValueError(f"selection deve ser um de {SELECTIONS}")
 
     def notify(stage: str, detail: str, fraction: float) -> None:
         if progress_callback:
@@ -98,33 +107,43 @@ def run_pipeline(
     category = detect_project_category(repo_path, files)
     tree = build_tree(repo_path)
 
-    files_with_content: list[tuple[str, str]] = []
-    baseline_code = ""
     if strategy == "baseline":
-        baseline_code, scan_stats = baseline.scan_repository(repo_path)
+        candidates, scan_stats = baseline.scan_files(repo_path)
         stats = {**scan_stats, "files_analyzed": scan_stats["selected_files"]}
-        files_in_input = scan_stats["selected_files"]
     else:
-        files_with_content = read_many(repo_path, files)
+        candidates = read_many(repo_path, files)
         stats = summarize_stats(repo_path, files)
-        files_in_input = len(files_with_content)
 
-    content_by_path = dict(files_with_content)
+    content_by_path = dict(candidates)
     domain_hint = domain_adaptation_hint(category)
     evidence = EVIDENCE_RULE if use_evidence_rule else ""
 
     repo_map_text = ""
     index: EmbeddingIndex | None = None
-    flat_code = ""
+    fixed_selection: list[tuple[str, str]] = []
 
     if strategy == "rag":
         notify("repo_map", "Montando mapa estrutural", 0.08)
-        repo_map_text = build_repo_map(files_with_content)
+        repo_map_text = build_repo_map(candidates)
+
+    if context == "topk" and selection == "embeddings":
         notify("embeddings", "Calculando embeddings", 0.15)
         index = EmbeddingIndex(client, embed_model=embed_model)
-        index.build([(p, extract_signature(p, c)) for p, c in files_with_content])
-    elif strategy == "flat":
-        flat_code = _full_code(files_with_content)
+        index.build([(p, extract_signature(p, c)) for p, c in candidates])
+    elif context == "topk":
+        fixed_selection = heuristic_top_k(candidates, top_k)
+
+    def select_files(section: Section) -> list[tuple[str, str]]:
+        if context == "completo":
+            return candidates
+        if selection == "heuristica":
+            return fixed_selection
+        if index is None or index.is_empty():
+            return []
+        found = index.query(section.retrieval_query, top_k=top_k)
+        return [(r.path, content_by_path.get(r.path, r.content)) for r in found]
+
+    template = baseline.user_template(context, selection)
 
     results: list[SectionResult] = []
     for i, section in enumerate(SECTIONS):
@@ -133,26 +152,20 @@ def run_pipeline(
         before = client.usage.snapshot()
 
         plan = ""
-        retrieved_paths: list[str] = []
         system = SYSTEM_PROMPT
+        selected = select_files(section)
+        retrieved_paths = [p for p, _ in selected]
+
+        if context == "topk" or strategy == "rag":
+            limited = [(p, c[:MAX_RETRIEVED_CHARS]) for p, c in selected]
+        else:
+            limited = selected
 
         if strategy == "baseline":
             system = baseline.system_prompt_for(section.key)
-            prompt = baseline.USER_TEMPLATE.format(code=baseline_code)
-            retrieved_paths = ["(repositório inteiro)"]
-        elif strategy == "flat":
-            retrieved_paths = [p for p, _ in files_with_content]
-            prompt = (
-                f"{domain_hint}\n\n{evidence}\n"
-                f"<repository_code>\n{flat_code}\n</repository_code>\n\n"
-                f"{section.write_instruction}"
-            )
+            prompt = template.format(code=baseline.format_files(limited))
         else:
-            retrieved = index.query(section.retrieval_query, top_k=top_k) if not index.is_empty() else []
-            retrieved_paths = [r.path for r in retrieved]
-            retrieved_text = "\n\n".join(
-                f"--- {r.path} ---\n{content_by_path.get(r.path, r.content)[:4000]}" for r in retrieved
-            )
+            code_text = "\n\n".join(f"--- {p} ---\n{c}" for p, c in limited)
 
             if use_plan_step:
                 plan_prompt = f"""
@@ -161,8 +174,8 @@ def run_pipeline(
 MAPA ESTRUTURAL DO REPOSITÓRIO:
 {repo_map_text[:8000]}
 
-CÓDIGO RECUPERADO PARA ESTA SEÇÃO:
-{retrieved_text}
+CÓDIGO PARA ESTA SEÇÃO:
+{code_text}
 
 TAREFA: {section.plan_instruction}
 
@@ -179,8 +192,8 @@ Responda de forma curta (lista ou JSON simples).
 PLANO:
 {plan if plan else "(sem etapa de plano)"}
 
-CÓDIGO RECUPERADO PARA ESTA SEÇÃO:
-{retrieved_text}
+CÓDIGO PARA ESTA SEÇÃO:
+{code_text}
 
 {section.write_instruction}
 """
@@ -217,9 +230,12 @@ CÓDIGO RECUPERADO PARA ESTA SEÇÃO:
         tree=tree,
         stats=stats,
         strategy=strategy,
+        context=context,
+        selection=selection if context == "topk" else "-",
+        top_k=top_k if context == "topk" else 0,
         model=client.model,
         num_ctx=client.num_ctx,
-        files_in_input=files_in_input,
+        files_in_input=len(candidates),
         sections=results,
         total_elapsed_seconds=time.perf_counter() - total_start,
         usage=client.usage.minus(usage_start),

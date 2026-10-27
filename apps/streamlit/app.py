@@ -14,15 +14,22 @@ from docgen.pipeline import run_pipeline
 from docgen.repository import load_from_github, load_from_zip
 
 STRATEGY_LABELS = {
-    "baseline": "Baseline: repositório inteiro por seção (prompts e seleção originais)",
-    "rag": "RAG: repo map e recuperação por seção (top-k arquivos mais relevantes)",
-    "flat": "Flat: repositório inteiro por seção (prompts do RAG)",
+    "baseline": "Baseline: prompts e seleção de arquivos originais",
+    "rag": "RAG: repo map, plano e prompts por seção",
+}
+CONTEXT_LABELS = {
+    "completo": "Completo: todos os arquivos selecionados",
+    "topk": "Top-k: apenas k arquivos por seção",
+}
+SELECTION_LABELS = {
+    "embeddings": "Embeddings: k arquivos mais relevantes para cada seção",
+    "heuristica": "Heurística: os mesmos k arquivos principais em todas as seções",
 }
 
 st.set_page_config(page_title="Gerador Docs (DocGen)", layout="wide")
-st.title("Gerador Docs (DocGen)")
+st.title("Gerador Docs")
 st.caption(
-    "benchmark-gerador-doc: Gerador de documentação (Guia de Projeto)."
+    "DocGen: Gerador de documentação/guia de projetos (benchmark-gerador-doc)."
 )
 
 with st.sidebar:
@@ -34,7 +41,15 @@ with st.sidebar:
 
     st.divider()
     st.header("Estratégia e contexto")
-    strategy = st.radio("Estratégia", list(STRATEGY_LABELS), format_func=STRATEGY_LABELS.get, key="strategy")
+    strategy = st.radio("Estratégia", list(STRATEGY_LABELS), format_func=STRATEGY_LABELS.get, index=1, key="strategy")
+    context = st.radio("Contexto enviado", list(CONTEXT_LABELS), format_func=CONTEXT_LABELS.get, index=1, key="context")
+    selection = st.radio(
+        "Seleção dos k arquivos",
+        list(SELECTION_LABELS),
+        format_func=SELECTION_LABELS.get,
+        key="selection",
+        disabled=context != "topk",
+    )
     num_ctx = st.select_slider("num_ctx", options=[4096, 8192, 16384, 32768], value=16384)
     seed = st.number_input("Seed", min_value=0, value=42, step=1)
     vram_est = estimate_vram_gb(model, num_ctx)
@@ -43,10 +58,10 @@ with st.sidebar:
 
     st.divider()
     st.header("Arquivos")
-    uses_selection = strategy != "baseline"
+    uses_selection = strategy == "rag"
     max_files = st.slider("Máximo de arquivos", 5, 300, 60, step=5, disabled=not uses_selection)
     exclude_docs = st.checkbox("Excluir README e docs da entrada", value=True, disabled=not uses_selection)
-    top_k = st.slider("Arquivos recuperados por seção (top-k)", 2, 20, 8, disabled=strategy != "rag")
+    top_k = st.slider("Número de arquivos (k)", 2, 20, 8, disabled=context != "topk")
 
     st.divider()
     st.header("Opções")
@@ -87,13 +102,13 @@ if repo:
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Arquivos no repositório", stats["all_files_visible"])
-    c2.metric("Arquivos selecionados", "todos os válidos" if strategy == "baseline" else stats["files_analyzed"])
+    c2.metric("Arquivos selecionados", stats["files_analyzed"] if strategy == "rag" else "seleção própria")
     c3.metric("Tamanho", f"{stats['repository_bytes_visible'] / 1024:.1f} KB")
 
     with st.expander("Árvore do repositório"):
         st.code(build_tree(repo.path), language="text")
 
-    if strategy != "baseline":
+    if strategy == "rag":
         with st.expander("Arquivos selecionados"):
             st.dataframe(
                 [{"arquivo": f.path, "linhas": f.lines, "bytes": f.size, "linguagem": f.language} for f in files],
@@ -122,23 +137,29 @@ if repo:
                 files=files,
                 client=client,
                 strategy=strategy,
+                context=context,
+                selection=selection,
                 embed_model=embed_model,
                 top_k=top_k,
                 use_plan_step=use_plan_step,
                 use_mermaid_repair=use_mermaid_repair,
                 progress_callback=on_progress,
             )
-            if use_judge:
-                status.write("juiz: auditando seções")
-                run_judge(result, client, judge_model)
-
             st.session_state["result"] = result
             st.session_state["reference_doc"] = find_reference_doc(repo.path)
             st.session_state["repo_path"] = repo.path
             st.session_state["run_options"] = {
                 "plano": use_plan_step, "reparo_mermaid": use_mermaid_repair,
-                "juiz": use_judge, "seed": int(seed), "top_k": top_k,
+                "juiz": use_judge, "seed": int(seed), "top_k": result.top_k,
             }
+
+            if use_judge:
+                status.write("juiz: auditando seções")
+                try:
+                    run_judge(result, client, judge_model)
+                except Exception as exc:
+                    st.warning(f"Falha no juiz (o guia foi mantido): {exc}")
+
             st.success(f"Guia gerado em {result.total_elapsed_seconds:.1f} s")
         except Exception as exc:
             st.error(f"Falha na geração: {exc}")
@@ -149,7 +170,7 @@ if result:
     st.subheader("4. Resultado")
 
     cols = st.columns(5)
-    cols[0].metric("Estratégia", result.strategy)
+    cols[0].metric("Configuração", f"{result.strategy} / {result.context} / {result.selection}")
     cols[1].metric("Tempo total", f"{result.total_elapsed_seconds:.1f} s")
     cols[2].metric("Tokens (entrada / saída)", f"{result.usage.prompt_tokens:,} / {result.usage.output_tokens:,}")
     cols[3].metric("Arquivos na entrada", result.files_in_input)
@@ -167,6 +188,7 @@ if result:
         f"- Data: {datetime.now().isoformat(timespec='seconds')}\n"
         f"- Repositório: {result.repo_name}\n"
         f"- Estratégia: {result.strategy}\n"
+        f"- Contexto: {result.context} (seleção: {result.selection}, k: {result.top_k})\n"
         f"- Modelo: {result.model}\n"
         f"- num_ctx: {result.num_ctx}\n"
         f"- Opções: {options}\n"
@@ -191,8 +213,8 @@ if result:
             info[1].caption(f"Tokens: {item.prompt_tokens:,} / {item.output_tokens:,}")
             info[2].caption(f"Mermaid reparado: {'sim' if item.mermaid_repaired else 'não'}")
 
-            if result.strategy == "rag":
-                with st.expander(f"Arquivos recuperados ({len(item.retrieved_paths)})"):
+            if result.context == "topk":
+                with st.expander(f"Arquivos enviados ({len(item.retrieved_paths)})"):
                     st.write(item.retrieved_paths)
             if item.plan:
                 with st.expander("Plano"):

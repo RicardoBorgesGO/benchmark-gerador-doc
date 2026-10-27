@@ -20,7 +20,9 @@ MODELS = {
     "24gb": ["qwen2.5-coder:14b"],
 }
 
-STRATEGIES = ["baseline", "flat", "rag"]
+STRATEGIES = ["baseline", "rag"]
+CONTEXTS = ["completo", "topk"]
+SELECTIONS = ["embeddings"]
 NUM_CTX_VALUES = [16384]
 REPEATS = 3
 BASE_SEED = 42

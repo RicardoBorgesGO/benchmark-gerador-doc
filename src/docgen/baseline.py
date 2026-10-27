@@ -1,4 +1,4 @@
-"""Estratégia Baseline: repositório inteiro em um prompt por documento, com os prompts e a seleção de arquivos originais."""
+"""Estratégia baseline: prompts de sistema por documento e seleção de arquivos originais do projeto."""
 
 from __future__ import annotations
 
@@ -42,16 +42,26 @@ USER_TEMPLATE = (
 )
 
 
+_INTRO_COMPLETE = "Abaixo está o código-fonte completo do repositório delimitado"
+_INTRO_BY_RELEVANCE = "Abaixo estão trechos do código-fonte do repositório, selecionados por relevância e delimitados"
+_INTRO_MAIN_FILES = "Abaixo estão os principais arquivos do repositório, delimitados"
+
+
+def user_template(context: str, selection: str) -> str:
+    if context == "completo":
+        return USER_TEMPLATE
+    intro = _INTRO_BY_RELEVANCE if selection == "embeddings" else _INTRO_MAIN_FILES
+    return USER_TEMPLATE.replace(_INTRO_COMPLETE, intro)
+
+
 def system_prompt_for(section_key: str) -> str:
     return SYSTEM_PROMPTS[DOCUMENT_BY_SECTION[section_key]]
 
 
-def scan_repository(repo_path: Path) -> tuple[str, dict]:
-    """Concatena todos os arquivos de extensão válida, sem limite de quantidade."""
+def scan_files(repo_path: Path) -> tuple[list[tuple[str, str]], dict]:
     root_path = str(repo_path)
-    # o filtro de pastas é aplicado ao caminho relativo à raiz do repositório
-    context: list[str] = []
-    total_files = selected_files = 0
+    entries: list[tuple[str, str]] = []
+    total_files = 0
 
     for root, _, files in os.walk(root_path):
         relative_root = os.path.relpath(root, root_path)
@@ -62,13 +72,16 @@ def scan_repository(repo_path: Path) -> tuple[str, dict]:
             total_files += 1
             if not name.endswith(VALID_FILE_EXTENSIONS):
                 continue
-            selected_files += 1
             full_path = os.path.join(root, name)
             try:
                 with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
             except OSError:
                 continue
-            context.append(f"--- {os.path.relpath(full_path, root_path)} ---\n{content}\n")
+            entries.append((os.path.relpath(full_path, root_path), content))
 
-    return "\n".join(context), {"total_files": total_files, "selected_files": selected_files}
+    return entries, {"total_files": total_files, "selected_files": len(entries)}
+
+
+def format_files(entries: list[tuple[str, str]]) -> str:
+    return "\n".join(f"--- {path} ---\n{content}\n" for path, content in entries)

@@ -8,6 +8,14 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+COMPARISONS = [
+    ("baseline/topk/embeddings", "baseline/completo/-"),
+    ("rag/topk/embeddings", "rag/completo/-"),
+    ("rag/topk/embeddings", "rag/topk/heuristica"),
+    ("rag/completo/-", "baseline/completo/-"),
+    ("rag/topk/embeddings", "baseline/completo/-"),
+]
+
 METRICS = [
     "tempo_total_s", "tokens_prompt", "chamadas_truncadas", "bert_f1", "meteor",
     "refs_inexistentes", "taxa_suporte_refs", "falhas_juiz_total", "energia_wh",
@@ -36,10 +44,10 @@ def main(path: str) -> None:
 
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for r in rows:
-        groups[(r["repo"], r["modelo"], r["num_ctx"], r["estrategia"])].append(r)
+        groups[(r["repo"], r["modelo"], r["num_ctx"], r["configuracao"])].append(r)
 
     print("\n== Média ± desvio por configuração ==")
-    header = ["repo", "modelo", "ctx", "estratégia", "n"] + METRICS
+    header = ["repo", "modelo", "ctx", "configuração", "n"] + METRICS
     print(" | ".join(header))
     for key, rs in sorted(groups.items()):
         cells = list(key) + [str(len(rs))]
@@ -49,7 +57,7 @@ def main(path: str) -> None:
 
     pairs = defaultdict(dict)
     for r in rows:
-        pairs[(r["repo"], r["modelo"], r["num_ctx"], r["repeticao"])][r["estrategia"]] = r
+        pairs[(r["repo"], r["modelo"], r["num_ctx"], r["repeticao"])][r["configuracao"]] = r
 
     try:
         from scipy.stats import wilcoxon
@@ -57,13 +65,13 @@ def main(path: str) -> None:
         wilcoxon = None
 
     pair_metrics = ["tempo_total_s", "chamadas_truncadas", "refs_inexistentes", "bert_f1", "meteor", "falhas_juiz_total"]
-    for baseline in ("baseline", "flat"):
-        print(f"\n== Pareado: rag - {baseline} ==")
+    for treatment, reference in COMPARISONS:
+        print(f"\n== Pareado: {treatment} - {reference} ==")
         for m in pair_metrics:
             diffs = []
             for pair in pairs.values():
-                if baseline in pair and "rag" in pair:
-                    a, b = num(pair[baseline].get(m)), num(pair["rag"].get(m))
+                if reference in pair and treatment in pair:
+                    a, b = num(pair[reference].get(m)), num(pair[treatment].get(m))
                     if a is not None and b is not None:
                         diffs.append(b - a)
             if not diffs:
