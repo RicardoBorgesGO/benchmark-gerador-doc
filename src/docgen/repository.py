@@ -62,7 +62,6 @@ def load_from_zip(uploaded_file) -> Repository:
                 raise ValueError("ZIP contém caminho inválido.")
         zf.extractall(extract_dir)
 
-    # GitHub ZIPs normalmente possuem uma pasta raiz.
     children = [p for p in extract_dir.iterdir()]
     if len(children) == 1 and children[0].is_dir():
         repo_path = children[0]

@@ -1,3 +1,0 @@
-# Dependências opcionais para a etapa de avaliação do protocolo experimental
-bert-score>=0.3.13
-nltk>=3.9

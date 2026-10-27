@@ -1,0 +1,20 @@
+{
+  "name": "docgen",
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.devcontainer.yml"],
+  "service": "dev",
+  "runServices": ["ollama", "ollama-init", "dev"],
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [8501, 11434],
+  "portsAttributes": {
+    "8501": { "label": "Streamlit" },
+    "11434": { "label": "Ollama" }
+  },
+  "postCreateCommand": "pip install -e '.[app]'",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-python.vscode-pylance", "ms-azuretools.vscode-docker"],
+      "settings": { "python.defaultInterpreterPath": "/usr/local/bin/python" }
+    }
+  }
+}

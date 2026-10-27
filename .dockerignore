@@ -1,0 +1,7 @@
+.git/
+.venv/
+__pycache__/
+*.pyc
+benchmark_results/
+tests/
+docs/

@@ -1,0 +1,12 @@
+services:
+  dev:
+    build: .
+    command: ["sleep", "infinity"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - .:/workspace:cached
+    working_dir: /workspace
+    depends_on:
+      ollama:
+        condition: service_healthy

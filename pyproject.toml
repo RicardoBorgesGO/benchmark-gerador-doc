@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docgen"
+version = "0.1.0"
+description = "Geração de Guia de Projeto de Software com modelos locais (Ollama)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26,<3",
+    "ollama>=0.5,<1",
+    "requests>=2.32,<3",
+]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.45,<2"]
+eval = ["bert-score>=0.3.13", "nltk>=3.9", "scipy>=1.11"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

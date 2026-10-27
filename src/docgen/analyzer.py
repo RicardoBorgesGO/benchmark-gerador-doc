@@ -58,10 +58,43 @@ def language_for(path: Path) -> str:
     return path.suffix.lower().lstrip(".") or "text"
 
 
-def collect_files(repo_path: Path, max_files: int = 60) -> list[FileInfo]:
+DOC_DIR_NAMES = {"docs", "doc", "documentation"}
+
+
+def is_doc_file(rel_path: str) -> bool:
+    p = Path(rel_path)
+    if p.name.lower().startswith("readme"):
+        return True
+    if any(part.lower() in DOC_DIR_NAMES for part in p.parts[:-1]):
+        return True
+    return p.suffix.lower() in {".md", ".rst"} and p.name.lower() not in {"license.md"}
+
+
+def find_reference_doc(repo_path: Path, max_chars: int = 200_000) -> str:
+    parts: list[str] = []
+    for path in sorted(repo_path.rglob("*")):
+        if not path.is_file() or any(x in IGNORED_DIRS for x in path.parts):
+            continue
+        try:
+            rel = str(path.relative_to(repo_path))
+        except ValueError:
+            continue
+        if is_doc_file(rel) and path.suffix.lower() in {".md", ".rst", ".txt", ""}:
+            try:
+                parts.append(path.read_text(encoding="utf-8", errors="ignore"))
+            except OSError:
+                continue
+    return "\n\n".join(parts)[:max_chars]
+
+
+def collect_files(
+    repo_path: Path, max_files: int = 60, exclude_docs: bool = False
+) -> list[FileInfo]:
     candidates = []
     for path in repo_path.rglob("*"):
         if path.is_file() and is_candidate(path):
+            if exclude_docs and is_doc_file(str(path.relative_to(repo_path))):
+                continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
                 candidates.append(
@@ -94,7 +127,7 @@ def read_file(repo_path: Path, relative_path: str, max_chars: int = 60_000) -> s
     path = repo_path / relative_path
     text = path.read_text(encoding="utf-8", errors="ignore")
     if len(text) > max_chars:
-        return text[:max_chars] + "\n\n[TRUNCADO PELO PILOTO]"
+        return text[:max_chars] + "\n\n[TRUNCADO]"
     return text
 
 
@@ -111,6 +144,36 @@ def build_tree(repo_path: Path, max_entries: int = 300) -> str:
         marker = "[D]" if path.is_dir() else "[F]"
         rows.append(f"{prefix}{marker} {rel}")
     return "\n".join(rows)
+
+
+_CATEGORY_SIGNALS = {
+    "api": ["fastapi", "flask", "express", "django", "rest_framework", "spring", "gin"],
+    "webapp": ["react", "vue", "next", "nuxt", "svelte", "angular"],
+    "cli": ["argparse", "click", "typer", "commander", "cobra"],
+    "game": ["pygame", "unity", "godot", "phaser", "love2d"],
+    "lib": ["setup.py", "pyproject.toml", "setuptools"],
+}
+
+
+def detect_project_category(repo_path: Path, files: list[FileInfo]) -> str:
+    haystack_parts = []
+    for name in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "Cargo.toml"):
+        path = repo_path / name
+        if path.exists():
+            try:
+                haystack_parts.append(path.read_text(encoding="utf-8", errors="ignore").lower())
+            except OSError:
+                pass
+    haystack_parts.extend(f.path.lower() for f in files)
+    haystack = " ".join(haystack_parts)
+
+    scores = {cat: sum(sig in haystack for sig in sigs) for cat, sigs in _CATEGORY_SIGNALS.items()}
+    best_cat = max(scores, key=scores.get)
+    return best_cat if scores[best_cat] > 0 else "desconhecido"
+
+
+def read_many(repo_path: Path, files: list[FileInfo], max_chars: int = 60_000) -> list[tuple[str, str]]:
+    return [(f.path, read_file(repo_path, f.path, max_chars=max_chars)) for f in files]
 
 
 def summarize_stats(repo_path: Path, files: list[FileInfo]) -> dict:
