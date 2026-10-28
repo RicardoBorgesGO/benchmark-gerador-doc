@@ -5,6 +5,7 @@ import shutil
 import logging
 import pandas as pd
 import requests
+from glob import glob
 from git import Repo
 from config import *
 from prompts import SYSTEM_PROMPTS
@@ -83,12 +84,14 @@ def run_pipeline(repository_urls, ollama_models):
             total_start_time = time.perf_counter()
             repository_code, stats = scan_repository(repo_folder)
             repo_name = repo_url.split("/")[-1].replace(".git", "")
-            repo_output_dir = os.path.join(OUTPUT_DIR, repo_name)
+            repo_output_dir = os.path.join(OUTPUT_DIR, model.replace(":", "_"), repo_name)
             os.makedirs(repo_output_dir, exist_ok=True)
+
+            # Copy reference README.md for evaluation 
+            shutil.copy(glob(os.path.join(repo_folder, "README.*"))[0], repo_output_dir)
 
             for output_file, system_prompt in SYSTEM_PROMPTS.items():
                 file_output_path = os.path.join(repo_output_dir, output_file)
-                system_prompt = SYSTEM_PROMPTS[output_file]
 
                 logging.info(f"Generating {output_file}...")
                 start_time = time.perf_counter()
@@ -108,6 +111,7 @@ def run_pipeline(repository_urls, ollama_models):
                     "6. Início Imediato: Comece sua resposta diretamente com o caractere `#` do título principal."
                 )
 
+                
                 payload = {
                     "model": model,
                     "messages": [
@@ -115,6 +119,11 @@ def run_pipeline(repository_urls, ollama_models):
                         {"role": "user", "content": user_content},
                     ],
                     "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "top_p": 0.9,
+                        "num_ctx": 4096  # 4096, 8192, 16384
+                    }
                 }
                 
                 try:
@@ -144,10 +153,9 @@ def run_pipeline(repository_urls, ollama_models):
                     logging.error(f"Timeout while generating document {output_file}.")
                 except Exception as e:
                     logging.error(f"Execution failure: {e}")
-
-            shutil.rmtree(repo_folder, onexc=remove_readonly)
-            total_elapsed = time.perf_counter() - total_start_time
-            logging.info(f"Repository {repo_url} fully processed in {total_elapsed:.2f} seconds.\n")
+        shutil.rmtree(repo_folder, onexc=remove_readonly)
+        total_elapsed = time.perf_counter() - total_start_time
+        logging.info(f"Repository {repo_url} fully processed in {total_elapsed:.2f} seconds.\n")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

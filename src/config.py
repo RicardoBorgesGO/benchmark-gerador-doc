@@ -22,37 +22,35 @@ VALID_FILE_EXTENSIONS = (
 ###################
 
 REPOSITORIES = [
-    # Small Repositories
     "https://github.com/epidemian/snake",
-    # "https://github.com/marcft/tic-tac-toe",
-    # "https://github.com/scotch-io/node-todo",
-    # "https://github.com/expressjs/body-parser",
-    # "https://github.com/sindresorhus/is-online",
-    # "https://github.com/busyloop/lolcat",
+    "https://github.com/marcft/tic-tac-toe",
+    "https://github.com/scotch-io/node-todo",
+    "https://github.com/expressjs/body-parser",
+    "https://github.com/sindresorhus/is-online",
+    "https://github.com/busyloop/lolcat",
+    "https://github.com/psf/requests",
+    "https://github.com/tartley/colorama",
+    "https://github.com/Spu7Nix/obamify",
+    "https://github.com/chubin/cheat.sh",
+    "https://github.com/thaddeush/SlidingPuzzle",
 
-    # # # Medium Repositories
-    # "https://github.com/psf/requests",
-    # "https://github.com/tartley/colorama",
-    # "https://github.com/Spu7Nix/obamify",
-    # "https://github.com/chubin/cheat.sh",
-
-    # # Large Repositories
-    # "https://github.com/fastapi/fastapi",
-    # "https://github.com/gorhill/uBlock",
 ]
 
 OLLAMA_MODELS = [
-    # For 8GB VRAM GPUs (4-5GB size)
-    # "qwen2.5-coder:7b",
+    # 4-5GB size
+    "qwen2.5-coder:7b",
     "deepseek-coder:6.7b",
-    # "codellama:7b",
-    # "qwen2.5:7b",  
+    "qwen2.5:7b",  
 
-    # For 24GB VRAM GPUs (13-19GB size)
-    # "qwen2.5-coder:14b",
-    # "deepseek-coder-v2:16b",
-    # "codellama:34b",
+    # 13-19GB size
+    "qwen2.5-coder:14b",
+    "deepseek-coder-v2:16b",
+    "codellama:34b",
+    "gemma4:12b",
+    "qwen3.6:27b",
 ]
+
+JUDGE_MODEL = "gemma4:12b"
 
 MODEL_ARCHITECTURES = {
     "qwen2.5:7b": {
