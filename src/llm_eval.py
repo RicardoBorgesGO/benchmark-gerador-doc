@@ -8,6 +8,8 @@ from glob import glob
 from pathlib import Path
 from json_repair import repair_json
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 def parse_llm_json(raw_output):
     try:
         clean_output = raw_output.replace("```json", "").replace("```", "").strip()
@@ -41,9 +43,11 @@ def evaluate_markdown(file_path, readme_content):
                         {"role": "user", "content": user_prompt}],
             "stream": False,
             "options": {
-                "temperature": 0.1,
-                "top_p": 0.9,
-                "num_ctx": 16384  
+                "num_ctx": 16384,
+                "num_predict": 8192,
+                "temperature": 0.2,
+                "repeat_penalty": 1.15,
+                "repeat_last_n": 128
             }
         }
 
@@ -56,20 +60,18 @@ def evaluate_markdown(file_path, readme_content):
     except:
         breakpoint()
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    evaluations = {}
-    for model_folder in os.listdir("autodoc"):
-        for repository in os.listdir(os.path.join("autodoc", model_folder)):
-            if os.path.exists(os.path.join("autodoc", model_folder, repository, "llm_eval.json")):
-                continue
-            md_files = glob(os.path.join("autodoc", model_folder, repository, "*.md"))
-            readme_content = Path(md_files[-1]).read_text(encoding="utf-8")
-            for md_file in md_files[:-1]:
-                logging.info(f"ANALYZING {md_file}...")
-                suggestions = evaluate_markdown(Path(md_file), readme_content)
-                evaluations[Path(md_file).name] = suggestions
+evaluations = {}
+for model_folder in os.listdir("autodoc"):
+    for repository in os.listdir(os.path.join("autodoc", model_folder)):
+        if os.path.exists(os.path.join("autodoc", model_folder, repository, "llm_eval.json")):
+            continue
+        md_files = glob(os.path.join("autodoc", model_folder, repository, "*.md"))
+        readme_content = Path(md_files[-1]).read_text(encoding="utf-8")
+        for md_file in md_files[:-1]:
+            logging.info(f"ANALYZING {md_file}...")
+            suggestions = evaluate_markdown(Path(md_file), readme_content)
+            evaluations[Path(md_file).name] = suggestions
 
-            output_path = Path(os.path.join("autodoc", model_folder, repository, "llm_eval.json"))
-            output_path.write_text(json.dumps(evaluations, indent=2, ensure_ascii=False), encoding="utf-8")
-            logging.info(f"\nASSESMENT COMPLETE. REPORT SAVED AT: {output_path}")
+        output_path = Path(os.path.join("autodoc", model_folder, repository, "llm_eval.json"))
+        output_path.write_text(json.dumps(evaluations, indent=2, ensure_ascii=False), encoding="utf-8")
+        logging.info(f"\nASSESMENT COMPLETE. REPORT SAVED AT: {output_path}")

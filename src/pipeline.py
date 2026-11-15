@@ -78,8 +78,8 @@ def run_pipeline(repository_urls, ollama_models):
 
     for repo_url in repository_urls:
         repo_folder = download_github_repository(repo_url)
+        logging.info(f"PROCESSING REPOSITORY: {repo_url}")
         for model in ollama_models:
-            logging.info(f"PROCESSING REPOSITORY: {repo_url}")
             
             total_start_time = time.perf_counter()
             repository_code, stats = scan_repository(repo_folder)
@@ -92,8 +92,10 @@ def run_pipeline(repository_urls, ollama_models):
 
             for output_file, system_prompt in SYSTEM_PROMPTS.items():
                 file_output_path = os.path.join(repo_output_dir, output_file)
+                if os.path.exists(file_output_path):
+                    continue
 
-                logging.info(f"Generating {output_file}...")
+                logging.info(f"Generating {output_file} with {model}...")
                 start_time = time.perf_counter()
                 
                 user_content = (
@@ -111,7 +113,6 @@ def run_pipeline(repository_urls, ollama_models):
                     "6. Início Imediato: Comece sua resposta diretamente com o caractere `#` do título principal."
                 )
 
-                
                 payload = {
                     "model": model,
                     "messages": [
@@ -120,14 +121,16 @@ def run_pipeline(repository_urls, ollama_models):
                     ],
                     "stream": False,
                     "options": {
-                        "temperature": 0.1,
-                        "top_p": 0.9,
-                        "num_ctx": 4096  # 4096, 8192, 16384
+                        "num_ctx": 16384,
+                        "num_predict": 8192,
+                        "temperature": 0.2,
+                        "repeat_penalty": 1.15,
+                        "repeat_last_n": 128
                     }
                 }
                 
                 try:
-                    response = requests.post(f"{OLLAMA_API_URL}/api/chat", json=payload, timeout=600)
+                    response = requests.post(f"{OLLAMA_API_URL}/api/chat", json=payload, timeout=1200)
                     
                     if response.status_code == 200:
                         res_data = response.json()
@@ -151,6 +154,7 @@ def run_pipeline(repository_urls, ollama_models):
                         
                 except requests.exceptions.Timeout:
                     logging.error(f"Timeout while generating document {output_file}.")
+                    exit()
                 except Exception as e:
                     logging.error(f"Execution failure: {e}")
         shutil.rmtree(repo_folder, onexc=remove_readonly)

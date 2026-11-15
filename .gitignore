@@ -8,5 +8,4 @@ __pycache__/
 tmp/
 outputs/
 .DS_Store
-autodoc/
-autodoc_/
+autodoc*/
