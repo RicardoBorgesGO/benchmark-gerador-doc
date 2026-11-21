@@ -16,8 +16,12 @@ MODEL_ARCHITECTURES = {
 }
 
 
+def estimate_tokens_from_chars(characters: int) -> int:
+    return int(characters / 3.3)
+
+
 def estimate_tokens(text: str) -> int:
-    return int(len(text) / 3.3)
+    return estimate_tokens_from_chars(len(text))
 
 
 def estimate_vram_gb(model_name: str, context_tokens: int, kv_bits: int = 16, overhead_gb: float = 1.0) -> float | None:

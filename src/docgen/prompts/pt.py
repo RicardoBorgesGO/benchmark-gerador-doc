@@ -231,3 +231,104 @@ SYSTEM_PROMPTS = {
     - QUEBRA DE LINHA EM RÓTULOS: Para quebrar linha dentro de um nó ou rótulo de seta, USE OBRIGATORIAMENTE a tag HTML `<br/>`. JAMAIS use `\n` ou aspas duplas adicionais no meio do rótulo.
     """
 }
+
+EVAL_PROMPTS = {
+    "judge_score": """Você é um auditor sênior de avaliação de documentação técnica em software que será utilizada como um guia de repositório, ajudando desenvolvedores a compreender toda a lógica de código e estrutura de um projeto.
+
+    Sua tarefa é analisar criticamente um documento gerado por outro LLM. Esse documento será baseado em um de 2 frameworks de documentação (Diatáxis e C4 Model)
+
+    ## ESTRUTURA DO INPUT QUE VOCÊ RECEBERÁ:
+    Você receberá a entrada do usuário dividida nas seguintes tags XML:
+    - <readme>: O README.md oficial do projeto, que deve ser interpretado como um overview de um determinado repositório. Entenda que o documento que foi gerado tem um único propósito, servir como guia do projeto do repositório. Portanto não é necessário que o documento final seja fiel a esse README.md
+    - <doc_instructions>: O prompt de sistema original que foi utilizado para orientar o LLM na geração daquele documento específico (define o regras, escopo e conteudo esperado).
+    - <target_file>: O nome do arquivo gerado (corresponde a um dos 7 arquivos do pipeline: 01_tutorials.md, 02_how_to_guide.md, 03_reference.md, 04_explanation.md, C4_architecture_level1.md, C4_architecture_level2.md, ou C4_architecture_level3.md).
+    - <document>: O conteúdo real gerado pelo modelo que você deve auditar e pontuar.
+
+    ## CRITÉRIOS DE AVALIAÇÃO E RUBRICA (Notas de 1 a 5):
+
+    1. Coerência com o Repositório (coerencia_repositorio):
+    - O que avalia: A fidelidade factual e técnica do documento em relação ao <readme>. Verifica se o LLM alucinou tecnologias, dependências ou arquiteturas que não existem no projeto original.
+    - Escala: (1 = Repleto de alucinações e desconectado da realidade do projeto; 5 = Totalmente fiel e ancorado nas informações reais do README).
+
+    2. Adesão aos Frameworks (adesao_frameworks):
+    - O que avalia: O rigor técnico na aplicação simultânea do C4 Model (níveis corretos de abstração) ou do Diatáxis (propósito estrito do quadrante correspondente, respeitando o <doc_instructions> sem misturar papéis).
+    - Escala: (1 = Ignora completamente as instruções ou os frameworks, misturando conceitos incorretamente; 5 = Aplicação exemplar, respeitando rigorosamente o escopo do <target_file> e do <doc_instructions>).
+
+    3. Utilidade para Onboarding (utilidade_onboarding):
+    - O que avalia: O valor prático do documento contido em <document> para acelerar a integração de um novo desenvolvedor no projeto, facilitando a compreensão geral do sistema.
+    - Escala: (1 = Inútil ou confuso para um novato; 5 = Guia excelente que acelera drasticamente a curva de aprendizado do desenvolvedor).
+
+    4. Clareza do Conteúdo (clareza_conteudo):
+    - O que avalia: A qualidade da escrita técnica, objetividade, coesão estrutural, poder de síntese e uso adequado da formatação em Markdown.
+    - Escala: (1 = Texto confuso, mal formatado ou prolixo; 5 = Escrita impecável, altamente legível, direta e bem estruturada).
+
+    ---
+
+    ## REGRAS OBRIGATÓRIAS DE FORMATO:
+    1. Retorne EXCLUSIVAMENTE um objeto JSON válido.
+    2. É RIGOROSAMENTE PROIBIDO incluir saudações, blocos de texto markdown fora do JSON ou explicações introdutórias.
+    3. O JSON deve seguir estritamente esta estrutura de chaves:
+    {
+        "scores": {
+            "coerencia_repositorio": <inteiro de 1 a 5>,
+            "adesao_frameworks": <inteiro de 1 a 5>,
+            "utilidade_onboarding": <inteiro de 1 a 5>,
+            "clareza_conteudo": <inteiro de 1 a 5>
+        },
+        "suggestions": [
+            "<string com sugestão acionável 1>",
+            "<string com sugestão acionável 2>"
+        ]
+    }"""
+}
+
+
+USER_TEMPLATE = (
+    "Abaixo está o código-fonte completo do repositório delimitado pelas tags <repository_code>.\n"
+    "Analise o código e gere OBRIGATORIAMENTE o documento específico solicitado no seu SYSTEM PROMPT.\n\n"
+    "<repository_code>\n{code}\n</repository_code>\n\n"
+    "REGRAS DE EXECUÇÃO:\n"
+    "1. Idioma: EXCLUSIVAMENTE Português (Brasil).\n"
+    "2. Fonte da Verdade: Use APENAS o código dentro de <repository_code>.\n"
+    "3. ADAPTAÇÃO DE DOMÍNIO: Classifique internamente o software em sua categoria (API, Game, Lib, CLI, UI/App ou Plugin) "
+    "e use APENAS a terminologia e tipos de exemplos próprios dessa categoria no documento.\n"
+    "4. FOCO EXCLUSIVO DO DOCUMENTO: Não gere uma visão geral genérica. Execute ESTRITAMENTE a estrutura, "
+    "o propósito e o nível de detalhe definidos no seu SYSTEM PROMPT.\n"
+    "5. Formato: Retorne APENAS Markdown puro. Para diagramas Mermaid, use sintaxe `flowchart TB/LR` pura.\n"
+    "6. Início Imediato: Comece sua resposta diretamente com o caractere `#` do título principal."
+)
+
+USER_TEMPLATE_PARTIAL = USER_TEMPLATE.replace(
+    "Abaixo está o código-fonte completo do repositório delimitado",
+    "Abaixo estão os principais arquivos do repositório, delimitados",
+)
+
+JUDGE_USER_TEMPLATE = (
+    "<readme>\n{readme}\n</readme>\n\n"
+    "<doc_instructions>\n{instructions}\n</doc_instructions>\n\n"
+    "<target_file>{target_file}</target_file>\n\n"
+    "<document>\n{document}\n</document>"
+)
+
+MERMAID_PROBLEMS = {
+    "native_c4": "Usa a sintaxe nativa C4Context/C4Container. Deve usar `flowchart TB` ou `flowchart LR`.",
+    "no_flowchart": "Não começa com `flowchart TB` ou `flowchart LR`.",
+    "newline": "Contém `\\n` literal dentro de rótulo; quebras de linha devem usar `<br/>`.",
+    "label_quotes": 'Há rótulo de seta sem aspas duplas. Formato exigido: `Origem -->|"Rótulo"| Destino`.',
+}
+
+MERMAID_REPAIR_TEMPLATE = """
+O documento abaixo tem problemas de sintaxe Mermaid que precisam ser corrigidos.
+Corrija APENAS a sintaxe Mermaid apontada, mantendo todo o resto do documento
+(texto, tabelas, estrutura) exatamente como está.
+
+PROBLEMAS ENCONTRADOS:
+{problems}
+
+DOCUMENTO ORIGINAL:
+{document}
+
+Retorne o documento completo corrigido, começando direto com o título (#).
+"""
+
+GUIDE_TITLE = "Guia de Projeto de Software"

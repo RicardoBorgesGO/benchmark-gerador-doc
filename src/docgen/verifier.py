@@ -37,10 +37,10 @@ class VerificationReport:
 
     def to_dict(self) -> dict:
         return {
-            "referencias_verificadas": self.checked,
-            "referencias_inexistentes": self.n_missing,
-            "taxa_de_suporte": round(self.support_rate, 4),
-            "exemplos_inexistentes": self.missing[:15],
+            "references_checked": self.checked,
+            "references_missing": self.n_missing,
+            "support_rate": round(self.support_rate, 4),
+            "missing_examples": self.missing[:15],
         }
 
 

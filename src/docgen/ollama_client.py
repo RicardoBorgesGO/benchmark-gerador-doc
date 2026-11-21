@@ -30,14 +30,21 @@ class OllamaClient:
         model: str,
         host: str = "http://localhost:11434",
         num_ctx: int = 16384,
-        seed: int | None = 42,
-        keep_alive: str | int = "10m",
+        num_predict: int = 8192,
+        temperature: float = 0.2,
+        repeat_penalty: float = 1.15,
+        repeat_last_n: int = 128,
+        seed: int | None = None,
+        timeout: float = 1200,
     ):
         self.model = model
         self.num_ctx = num_ctx
+        self.num_predict = num_predict
+        self.temperature = temperature
+        self.repeat_penalty = repeat_penalty
+        self.repeat_last_n = repeat_last_n
         self.seed = seed
-        self.keep_alive = keep_alive
-        self.client = ollama.Client(host=host)
+        self.client = ollama.Client(host=host, timeout=timeout)
         self.usage = UsageStats()
 
     def check(self) -> list[str]:
@@ -49,19 +56,26 @@ class OllamaClient:
                 names.append(name)
         return names
 
-    def chat(self, system: str, prompt: str, temperature: float = 0.1, model: str | None = None) -> str:
-        options = {"temperature": temperature, "num_ctx": self.num_ctx}
+    def options(self) -> dict:
+        options = {
+            "num_ctx": self.num_ctx,
+            "num_predict": self.num_predict,
+            "temperature": self.temperature,
+            "repeat_penalty": self.repeat_penalty,
+            "repeat_last_n": self.repeat_last_n,
+        }
         if self.seed is not None:
             options["seed"] = self.seed
+        return options
 
+    def chat(self, system: str, prompt: str, model: str | None = None) -> str:
         response = self.client.chat(
             model=model or self.model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ],
-            options=options,
-            keep_alive=self.keep_alive,
+            options=self.options(),
         )
 
         prompt_tokens = int(getattr(response, "prompt_eval_count", 0) or 0)
@@ -69,15 +83,7 @@ class OllamaClient:
         self.usage.calls += 1
         self.usage.prompt_tokens += prompt_tokens
         self.usage.output_tokens += output_tokens
-        # prompt que ocupa quase todo o num_ctx indica truncamento
         if prompt_tokens >= int(self.num_ctx * 0.98):
             self.usage.truncated_calls += 1
 
         return response.message.content
-
-    def embed(self, texts: list[str], model: str = "nomic-embed-text") -> list[list[float]]:
-        response = self.client.embed(model=model, input=texts)
-        vectors = getattr(response, "embeddings", None)
-        if vectors is None:
-            vectors = response["embeddings"]
-        return [list(v) for v in vectors]

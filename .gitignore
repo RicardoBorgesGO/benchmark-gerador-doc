@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 .env
 .streamlit/
-benchmark_results/
 autodoc/
+generation_metrics.csv
+evaluation_results.csv
 .DS_Store

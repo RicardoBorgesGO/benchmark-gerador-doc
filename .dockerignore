@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 *.pyc
-benchmark_results/
+autodoc/
+*.csv
 tests/
 docs/

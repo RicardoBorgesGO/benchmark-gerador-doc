@@ -16,6 +16,7 @@ RUN pip install ".[app]"
 
 COPY apps ./apps
 COPY benchmark ./benchmark
+COPY translated_readme ./translated_readme
 
 EXPOSE 8501
 

@@ -27,8 +27,7 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
       BASE_MODEL: qwen2.5-coder:7b
-      EMBED_MODEL: nomic-embed-text
-      JUDGE_MODEL: llama3.1:8b
+      JUDGE_MODEL: gemma4:12b
     volumes:
       - ./pull_models.sh:/pull_models.sh:ro
     entrypoint: ["/bin/sh", "/pull_models.sh"]

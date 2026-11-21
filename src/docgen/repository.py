@@ -20,13 +20,13 @@ class Repository:
 def _safe_repo_name(source: str) -> str:
     parsed = urlparse(source)
     if parsed.scheme:
-        name = Path(parsed.path.rstrip("/")).name
+        name = Path(parsed.path.rstrip("/")).name.removesuffix(".git")
     else:
         name = Path(source).stem
     return name or "repository"
 
 
-def load_from_github(url: str) -> Repository:
+def download_github_repository(url: str) -> Repository:
     if not url.startswith(("https://github.com/", "http://github.com/")):
         raise ValueError("Informe uma URL pública do GitHub.")
 

@@ -1,8 +1,24 @@
-"""Métricas de avaliação: BERTScore/METEOR (opcionais), sobreposição lexical, juiz e verificador."""
+"""Métricas: BERTScore e METEOR contra o README, juiz por rubrica e verificador de referências."""
 
 from __future__ import annotations
 
+import json
 import re
+
+from . import prompts
+from .verifier import verify_document
+
+SCORE_KEYS = ("repository_coherence", "framework_adherence", "onboarding_usefulness", "content_clarity")
+_SCORE_ALIASES = {
+    "coerencia_repositorio": "repository_coherence",
+    "repository_coherence": "repository_coherence",
+    "adesao_frameworks": "framework_adherence",
+    "framework_adherence": "framework_adherence",
+    "utilidade_onboarding": "onboarding_usefulness",
+    "onboarding_usefulness": "onboarding_usefulness",
+    "clareza_conteudo": "content_clarity",
+    "content_clarity": "content_clarity",
+}
 
 
 def lightweight_overlap_score(candidate: str, reference: str) -> float:
@@ -13,10 +29,7 @@ def lightweight_overlap_score(candidate: str, reference: str) -> float:
     ref_tokens = tokenize(reference)
     if not cand_tokens or not ref_tokens:
         return 0.0
-
-    intersection = cand_tokens & ref_tokens
-    union = cand_tokens | ref_tokens
-    return len(intersection) / len(union)
+    return len(cand_tokens & ref_tokens) / len(cand_tokens | ref_tokens)
 
 
 def full_metrics_available() -> bool:
@@ -29,10 +42,10 @@ def full_metrics_available() -> bool:
         return False
 
 
-def evaluate_with_reference(generated_text: str, reference_text: str) -> dict:
+def evaluate_documentation(generated_text: str, reference_text: str) -> dict:
     if not full_metrics_available():
         return {
-            "metodo": "fallback_leve (bert-score/nltk não instalados)",
+            "method": "lexical_overlap",
             "overlap_score": round(lightweight_overlap_score(generated_text, reference_text), 4),
         }
 
@@ -44,20 +57,15 @@ def evaluate_with_reference(generated_text: str, reference_text: str) -> dict:
     nltk.download("punkt", quiet=True)
     nltk.download("punkt_tab", quiet=True)
 
-    generated_tokens = nltk.word_tokenize(generated_text)
-    reference_tokens = nltk.word_tokenize(reference_text)
-
-    meteor_val = meteor_score([reference_tokens], generated_tokens)
-
+    meteor_val = meteor_score([nltk.word_tokenize(reference_text)], nltk.word_tokenize(generated_text))
     precision, recall, f1 = score(
         cands=[generated_text],
         refs=[reference_text],
         model_type="bert-base-multilingual-cased",
         verbose=False,
     )
-
     return {
-        "metodo": "bert_score + meteor",
+        "method": "bertscore_meteor",
         "meteor": round(float(meteor_val), 4),
         "bert_precision": round(float(precision.mean().item()), 4),
         "bert_recall": round(float(recall.mean().item()), 4),
@@ -65,51 +73,105 @@ def evaluate_with_reference(generated_text: str, reference_text: str) -> dict:
     }
 
 
-_BULLET_RE = re.compile(r"^\s*(?:[\*\-•]|\d+[\.\)])\s+(.+)$")
+def combined_documents(result) -> str:
+    return "\n\n".join(d.content for d in result.documents)
 
 
-def count_judge_issues(judge_text: str | None) -> int:
-    if not judge_text:
-        return 0
-    issues = 0
-    for line in judge_text.splitlines():
-        m = _BULLET_RE.match(line)
-        if m and "nenhum problema" not in m.group(1).lower():
-            issues += 1
-    return issues
+def parse_llm_json(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    text = raw.replace("```json", "").replace("```", "").replace("\u00a0", " ").strip()
+
+    candidates = [text]
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(text[start:end + 1])
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return data
+
+    try:
+        from json_repair import repair_json
+
+        data = repair_json(text, return_objects=True)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
 
 
-def evaluate_run(result, repo_path, reference_text: str = "") -> dict:
-    from .verifier import verify_document
+def normalize_judge(parsed: dict | None) -> dict | None:
+    if not isinstance(parsed, dict):
+        return None
+    raw_scores = parsed.get("scores") if isinstance(parsed.get("scores"), dict) else {}
+    scores = {}
+    for key, value in raw_scores.items():
+        canonical = _SCORE_ALIASES.get(key)
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if canonical and 1 <= number <= 5:
+            scores[canonical] = number
+    if not scores:
+        return None
+    suggestions = parsed.get("suggestions") if isinstance(parsed.get("suggestions"), list) else []
+    return {"scores": scores, "suggestions": [str(s) for s in suggestions if str(s).strip()]}
 
-    guide = result.assemble_markdown()
+
+def evaluate_markdown(client, language: str, item, readme_text: str, judge_model: str | None = None) -> dict | None:
+    message = prompts.judge_user_message(
+        language,
+        readme_text,
+        prompts.system_prompt(item.document.filename, language),
+        item.document.filename,
+        item.content,
+    )
+    item.judge_raw = client.chat(prompts.judge_system_prompt(language), message, model=judge_model)
+    item.judge = parse_llm_json(item.judge_raw)
+    return item.judge
+
+
+def judge_summary(result) -> dict:
+    judged = [d for d in result.documents if d.judge_raw is not None]
+    if not judged:
+        return {}
+    normalized = [n for n in (normalize_judge(d.judge) for d in judged) if n]
+    summary: dict = {}
+    for key in SCORE_KEYS:
+        values = [n["scores"][key] for n in normalized if key in n["scores"]]
+        summary[f"judge_{key}"] = round(sum(values) / len(values), 3) if values else ""
+    all_scores = [v for n in normalized for v in n["scores"].values()]
+    summary["judge_mean"] = round(sum(all_scores) / len(all_scores), 3) if all_scores else ""
+    summary["judge_suggestions_total"] = sum(len(n["suggestions"]) for n in normalized)
+    summary["judge_parse_failures"] = len(judged) - len(normalized)
+    return summary
+
+
+def evaluate_run(result, repo_path, reference_text: str = "", reference_kind: str = "none") -> dict:
     row: dict = {
-        "cenario": "com_referencia" if reference_text.strip() else "sem_referencia",
-        "tempo_total_s": round(result.total_elapsed_seconds, 2),
-        "tokens_prompt": result.usage.prompt_tokens,
-        "tokens_saida": result.usage.output_tokens,
-        "chamadas": result.usage.calls,
-        "chamadas_truncadas": result.usage.truncated_calls,
-        "mermaid_reparado": sum(1 for s in result.sections if s.mermaid_repaired),
+        "language": result.language,
+        "reference": reference_kind,
+        "generation_time_seconds": round(result.total_elapsed_seconds, 2),
+        "prompt_tokens": result.usage.prompt_tokens,
+        "output_tokens": result.usage.output_tokens,
+        "calls": result.usage.calls,
+        "truncated_calls": result.usage.truncated_calls,
+        "mermaid_repaired": sum(1 for d in result.documents if d.mermaid_repaired),
     }
 
+    combined = combined_documents(result)
     if reference_text.strip():
-        row.update(evaluate_with_reference(guide, reference_text))
+        row.update(evaluate_documentation(combined, reference_text))
 
-    judged = [s for s in result.sections if s.judge_feedback is not None]
-    if judged:
-        row["falhas_juiz_total"] = sum(count_judge_issues(s.judge_feedback) for s in judged)
+    row.update(judge_summary(result))
 
-    report = verify_document(guide, repo_path)
-    row["refs_verificadas"] = report.checked
-    row["refs_inexistentes"] = report.n_missing
-    row["taxa_suporte_refs"] = round(report.support_rate, 4)
+    report = verify_document(combined, repo_path)
+    row["references_checked"] = report.checked
+    row["references_missing"] = report.n_missing
+    row["references_support_rate"] = round(report.support_rate, 4)
     return row
-
-
-def run_judge(result, client, judge_model: str | None = None) -> None:
-    from .sections import JUDGE_SYSTEM_PROMPT
-
-    for s in result.sections:
-        prompt = f"ALVO DA AUDITORIA: seção '{s.section.title}'\n\n<document>\n{s.content}\n</document>"
-        s.judge_feedback = client.chat(JUDGE_SYSTEM_PROMPT, prompt, temperature=0.2, model=judge_model)

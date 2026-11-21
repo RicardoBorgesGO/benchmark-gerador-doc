@@ -1,82 +1,48 @@
 # Protocolo experimental
 
-Descrição: pergunta de pesquisa (impacto na redução do
-tempo e da taxa de revisão humana), hipótese (tempo de escrita inicial
-reduzido, só revisões pontuais) e infraestrutura delimitada (RTX até 24 GB
-VRAM, CPU até 12 núcleos, 64 GB RAM).
+Alinhado ao `projeto-genai.txt`: impacto da geração com modelos de código aberto em hardware local de baixo custo sobre o tempo e a taxa de revisão humana na criação de Guias de Projeto (RTX com até 24 GB de VRAM, CPU de até 12 núcleos, 64 GB de RAM).
 
 ## 1. Variáveis
 
-**Independentes:** repositório (porte: pequeno/médio/grande; com e sem docs),
-modelo (e quantização), `num_ctx`, estratégia (`baseline`, `rag`), contexto (`completo`, `topk`) e seleção dos k arquivos (`embeddings`, `heuristica`),
-técnicas ligadas/desligadas (plano, reparo Mermaid, RAG top-k).
+**Independentes:** repositório, modelo, idioma (`pt`, `en`), contexto (todos os arquivos ou top-k com `k` arquivos) e `num_ctx`.
 
-**Dependentes (todas já registradas em `runs.csv`):**
+**Dependentes (colunas de `generation_metrics.csv` e `evaluation_results.csv`):**
 
-| Dimensão do projeto | Métrica |
+| Dimensão | Métrica |
 |---|---|
-| Tempo | `tempo_total_s`, tempo por seção (`sections.csv`) |
-| Custo computacional | tokens de entrada/saída, `energia_wh`, `vram_pico_mb`, `vram_estimada_gb` |
-| Validade do experimento | `chamadas_truncadas` (contexto cortado) |
-| Qualidade, cenário 1 (com doc) | `bert_f1`, `meteor` contra README+docs |
-| Qualidade, cenário 2 (sem doc) | `falhas_juiz_total` (juiz LLM) |
-| Fidelidade | `refs_inexistentes`, `taxa_suporte_refs` (verificador determinístico) |
+| Tempo | `generation_time_seconds` (por execução e por documento) |
+| Custo computacional | `prompt_tokens`, `output_tokens`, `gpu_energy_wh`, `gpu_peak_vram_mb`, `estimated_vram_gb` |
+| Validade da execução | `truncated_calls` |
+| Alinhamento com a documentação existente | `bert_f1`, `meteor` contra o README (`reference` indica `translated` ou `original`) |
+| Qualidade segundo o juiz | `judge_*` (notas de 1 a 5), `judge_mean`, `judge_suggestions_total` |
+| Fidelidade ao repositório | `references_missing`, `references_support_rate` |
 | Taxa de revisão humana | `edit_rate` (interface, seção 6, ou `python -m docgen.edit_rate`) |
 
-## 2. Como executar
+## 2. Execução
 
 ```bash
-python -m benchmark.run_benchmark --tier pequeno --models qwen2.5-coder:7b --repeats 3
-python -m benchmark.run_benchmark --tier medio --num-ctx 8192 16384 32768
-python -m benchmark.summarize_results benchmark_results/runs.csv
+python -m benchmark.run_benchmark --models qwen2.5-coder:7b --repeats 3
+python -m benchmark.run_benchmark --models qwen2.5-coder:7b --top-k 0 8 --resume
+python -m benchmark.run_benchmark --models qwen2.5-coder:7b --languages pt en
+python -m benchmark.summarize_results evaluation_results.csv
 ```
 
-Os guias gerados ficam em `benchmark_results/docs/<repo>/<modelo>/<estrategia>/rN/`
-para a revisão humana.
+`--resume` pula execuções já registradas em `evaluation_results.csv`. O resumo traz média e desvio por configuração e a diferença pareada entre top-k e todos os arquivos (teste de Wilcoxon quando há `scipy` e ao menos 5 pares). Os documentos ficam em `autodoc/<modelo>/<repositório>/<idioma>/`; execuções que diferem só em `top_k`, `num_ctx` ou repetição sobrescrevem os arquivos, e os valores de cada execução ficam nos CSV.
 
-## 3. Cuidados de validade (leia antes de coletar dados)
+## 3. Cuidados de validade
 
-1. **Vazamento:** README/docs são excluídos da entrada do gerador (`exclude_docs`).
-   Sem isso, BERTScore/METEOR medem cópia, não geração.
-2. **Contaminação:** repositórios muito populares podem estar no treino do modelo.
-   Inclua projetos pequenos, recentes ou obscuros e reporte os resultados por grupo.
-3. **Truncamento:** se `chamadas_truncadas > 0`, o modelo não viu todo o código;
-   reporte isso como limitação do contexto `completo`, não descarte a linha.
-4. **Repetições:** ≥3 por configuração (seed muda por repetição, registrada no CSV);
-   reporte média±desvio e teste pareado.
-5. **Juiz:** use família diferente do gerador e valide contra humanos (amostra de
-   30–50 críticas, Cohen's kappa) antes de tratar "falhas do juiz" como métrica.
-6. **Métricas com referência:** BERTScore/METEOR comparam o guia inteiro contra o
-   README; servem como sinal de alinhamento, não como medida de correção.
+1. **Truncamento.** Se `chamadas_truncadas > 0`, o modelo não viu todo o código. Isso é esperado no contexto completo de repositórios grandes e deve ser reportado, não descartado. O top-k existe para esse caso.
+2. **Top-k e repositórios pequenos.** Com `k` maior ou igual ao número de arquivos válidos, o conjunto enviado é o mesmo do contexto completo (a diferença fica só no limite de 4.000 caracteres por arquivo).
+3. **Idioma.** BERTScore e METEOR em português são calculados contra o README traduzido; em inglês, contra o original. Os valores entre idiomas não são diretamente comparáveis, porque as referências e os prompts mudam juntos.
+4. **Referência.** Repositórios sem README ficam sem BERTScore e METEOR (`referencia = nenhuma`).
+5. **Juiz.** Evite usar o mesmo modelo para gerar e para julgar. O juiz recebe só o README e o texto do documento, então mede coerência com o README e não com o código; a checagem contra o código fica com `references_missing`. Valide as notas contra revisores humanos em uma amostra antes de usá-las como métrica principal.
+6. **Contaminação.** Repositórios populares (`requests`, `body-parser`) podem estar nos dados de treino dos modelos.
+7. **Repetições.** Sem `--seed-base` não há seed e a variação vem da temperatura; use `--repeats` e reporte média e desvio.
 
-## 4. Medindo a taxa de revisão e o tempo (parte humana)
+## 4. Parte humana
 
 A hipótese compara com a escrita manual, então são necessários dois números humanos:
 
-1. **Tempo de revisão:** um desenvolvedor (idealmente que NÃO conhece o repositório
-   e outro que conhece) revisa o guia gerado até considerá-lo utilizável para
-   onboarding. Cronometre. Registre quem revisou e a experiência dele.
-2. **Linha de base:** tempo para escrever o mesmo guia do zero (amostra menor,
-   p. ex. 1–2 repositórios pequenos) ou, no mínimo, uma estimativa justificada
-   por literatura. Sem isso, "redução de tempo" não é demonstrável.
-3. **Taxa de edição:** `compute_edit_rate(gerado, revisado)` (palavras adicionadas ×
-   removidas distinguem "faltou conteúdo" de "havia conteúdo errado").
-
-Pedir ao revisor uma nota 1–5 de utilidade para onboarding por seção,
-para triangular com as métricas automáticas.
-
-## 5. Comparações previstas
-
-Cada comparação muda apenas um fator (o benchmark resume as cinco primeiras):
-
-| Comparação | Fator isolado |
-|---|---|
-| `baseline/topk/embeddings` × `baseline/completo` | Recuperação, com os prompts originais |
-| `rag/topk/embeddings` × `rag/completo` | Recuperação, com os prompts por seção |
-| `rag/topk/embeddings` × `rag/topk/heuristica` | Embeddings × escolha fixa dos mesmos k arquivos |
-| `rag/completo` × `baseline/completo` | Prompts, plano e mapa de assinaturas (a seleção de arquivos também difere) |
-| `rag/topk/embeddings` × `baseline/completo` | Pipeline novo contra o original |
-
-Em repositórios com `k` arquivos ou menos, `topk` e `completo` enviam o mesmo conjunto; use repositórios médios e grandes para essas comparações.
-
-Variações adicionais: `rag` sem plano, sem reparo de Mermaid, `k` em 4, 8 e 16, `num_ctx` em 8k, 16k e 32k, e modelos 7B × 14B.
+1. **Tempo de revisão:** uma pessoa revisa o guia gerado até considerá-lo utilizável para onboarding, com tempo cronometrado. Registre quem revisou e a experiência dela.
+2. **Linha de base:** tempo para escrever o mesmo guia do zero (em ao menos 1 ou 2 repositórios pequenos) ou uma estimativa justificada por literatura.
+3. **Taxa de edição:** `compute_edit_rate(gerado, revisado)`; palavras adicionadas e removidas distinguem "faltou conteúdo" de "havia conteúdo errado".

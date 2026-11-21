@@ -13,8 +13,8 @@ def _words(text: str) -> list[str]:
 def compute_edit_rate(generated: str, revised: str) -> dict:
     a, b = _words(generated), _words(revised)
     if not a and not b:
-        return {"edit_rate": 0.0, "palavras_geradas": 0, "palavras_revisadas": 0,
-                "palavras_adicionadas": 0, "palavras_removidas": 0}
+        return {"edit_rate": 0.0, "generated_words": 0, "revised_words": 0,
+                "added_words": 0, "removed_words": 0}
 
     matcher = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
     added = removed = 0
@@ -26,10 +26,10 @@ def compute_edit_rate(generated: str, revised: str) -> dict:
 
     return {
         "edit_rate": round(1.0 - matcher.ratio(), 4),
-        "palavras_geradas": len(a),
-        "palavras_revisadas": len(b),
-        "palavras_adicionadas": added,
-        "palavras_removidas": removed,
+        "generated_words": len(a),
+        "revised_words": len(b),
+        "added_words": added,
+        "removed_words": removed,
     }
 
 

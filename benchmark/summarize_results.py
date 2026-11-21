@@ -1,4 +1,4 @@
-"""Resume runs.csv: média e desvio por configuração e comparação pareada entre estratégias."""
+"""Resume evaluation_results.csv: média e desvio por configuração e comparação pareada entre top-k e todos os arquivos."""
 
 from __future__ import annotations
 
@@ -8,17 +8,13 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-COMPARISONS = [
-    ("baseline/topk/embeddings", "baseline/completo/-"),
-    ("rag/topk/embeddings", "rag/completo/-"),
-    ("rag/topk/embeddings", "rag/topk/heuristica"),
-    ("rag/completo/-", "baseline/completo/-"),
-    ("rag/topk/embeddings", "baseline/completo/-"),
-]
-
 METRICS = [
-    "tempo_total_s", "tokens_prompt", "chamadas_truncadas", "bert_f1", "meteor",
-    "refs_inexistentes", "taxa_suporte_refs", "falhas_juiz_total", "energia_wh",
+    "generation_time_seconds", "prompt_tokens", "truncated_calls", "bert_f1", "meteor",
+    "judge_mean", "judge_suggestions_total", "references_missing", "references_support_rate", "gpu_energy_wh",
+]
+PAIRED_METRICS = [
+    "generation_time_seconds", "prompt_tokens", "truncated_calls", "bert_f1", "meteor",
+    "judge_mean", "judge_suggestions_total", "references_missing",
 ]
 
 
@@ -37,50 +33,53 @@ def fmt(values: list[float]) -> str:
     return f"{st.mean(values):.2f}±{st.stdev(values):.2f}"
 
 
+def label(row: dict) -> str:
+    k = int(row["top_k"] or 0)
+    return f"{row['language']}/" + (f"k{k}" if k else "all")
+
+
 def main(path: str) -> None:
-    rows = [r for r in csv.DictReader(Path(path).open(encoding="utf-8")) if not r.get("erro")]
+    rows = [r for r in csv.DictReader(Path(path).open(encoding="utf-8")) if not r.get("error")]
     if not rows:
         raise SystemExit("Sem execuções válidas no CSV.")
 
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for r in rows:
-        groups[(r["repo"], r["modelo"], r["num_ctx"], r["configuracao"])].append(r)
+        groups[(r["repository"], r["model"], r["num_ctx"], label(r))].append(r)
 
     print("\n== Média ± desvio por configuração ==")
-    header = ["repo", "modelo", "ctx", "configuração", "n"] + METRICS
-    print(" | ".join(header))
+    print(" | ".join(["repository", "model", "num_ctx", "language/files", "n"] + METRICS))
     for key, rs in sorted(groups.items()):
         cells = list(key) + [str(len(rs))]
         for m in METRICS:
             cells.append(fmt([v for v in (num(r.get(m)) for r in rs) if v is not None]))
         print(" | ".join(cells))
 
-    pairs = defaultdict(dict)
+    pairs: dict[tuple, dict] = defaultdict(dict)
     for r in rows:
-        pairs[(r["repo"], r["modelo"], r["num_ctx"], r["repeticao"])][r["configuracao"]] = r
+        mode = "top_k" if int(r["top_k"] or 0) else "all"
+        pairs[(r["repository"], r["model"], r["num_ctx"], r["language"], r["run"])][mode] = r
 
     try:
         from scipy.stats import wilcoxon
     except ImportError:
         wilcoxon = None
 
-    pair_metrics = ["tempo_total_s", "chamadas_truncadas", "refs_inexistentes", "bert_f1", "meteor", "falhas_juiz_total"]
-    for treatment, reference in COMPARISONS:
-        print(f"\n== Pareado: {treatment} - {reference} ==")
-        for m in pair_metrics:
-            diffs = []
-            for pair in pairs.values():
-                if reference in pair and treatment in pair:
-                    a, b = num(pair[reference].get(m)), num(pair[treatment].get(m))
-                    if a is not None and b is not None:
-                        diffs.append(b - a)
-            if not diffs:
-                continue
-            line = f"{m}: diferença média = {st.mean(diffs):+.3f} (n={len(diffs)})"
-            if wilcoxon and len(diffs) >= 5 and any(d != 0 for d in diffs):
-                line += f", Wilcoxon p = {wilcoxon(diffs).pvalue:.4f}"
-            print(line)
+    print("\n== Pareado: top-k - todos os arquivos ==")
+    for m in PAIRED_METRICS:
+        diffs = []
+        for pair in pairs.values():
+            if "all" in pair and "top_k" in pair:
+                a, b = num(pair["all"].get(m)), num(pair["top_k"].get(m))
+                if a is not None and b is not None:
+                    diffs.append(b - a)
+        if not diffs:
+            continue
+        line = f"{m}: diferença média = {st.mean(diffs):+.3f} (n={len(diffs)})"
+        if wilcoxon and len(diffs) >= 5 and any(d != 0 for d in diffs):
+            line += f", Wilcoxon p = {wilcoxon(diffs).pvalue:.4f}"
+        print(line)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "benchmark_results/runs.csv")
+    main(sys.argv[1] if len(sys.argv) > 1 else "evaluation_results.csv")
