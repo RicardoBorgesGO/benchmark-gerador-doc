@@ -1,6 +1,6 @@
-# docgen
+# 📘 Gerador Docs (DocGen)
 
-Geração de Guia de Projeto de Software (Diátaxis e C4) a partir de um repositório, com modelos de linguagem executados localmente no Ollama. Projeto de pesquisa descrito em `projeto-genai.txt`.
+Geração de Guia de Projeto de Software (Diátaxis e C4) a partir de um repositório, com modelos de linguagem executados localmente no Ollama.
 
 ## Estrutura
 
@@ -22,13 +22,13 @@ Geração de Guia de Projeto de Software (Diátaxis e C4) a partir de um reposit
 
 ## Como funciona
 
-Para cada repositório, o pipeline faz uma chamada ao modelo por documento (7 no total: 4 de Diátaxis e 3 de C4), enviando o código dos arquivos selecionados no prompt de usuário e um prompt de sistema específico do documento. É o mesmo harness da branch `main` (`src/pipeline.py`, `src/prompts.py`), com os mesmos parâmetros de geração: `num_ctx` 16384, `num_predict` 8192, `temperature` 0,2, `repeat_penalty` 1,15 e `repeat_last_n` 128.
+Para cada repositório, o pipeline faz uma chamada ao modelo por documento (7 no total: 4 de Diátaxis e 3 de C4), enviando o código dos arquivos selecionados no prompt de usuário e um prompt de sistema específico do documento. Parâmetros de geração: `num_ctx` 16384, `num_predict` 8192, `temperature` 0,2, `repeat_penalty` 1,15 e `repeat_last_n` 128.
 
-**Seleção de arquivos** (`src/docgen/harness.py`): extensões de código e configuração; ignora `node_modules`, `.git`, `__pycache__`, `doc`, `docs`, `env`, `venv`, `dist`, `build`, `test`, `tests` e pastas ocultas. O filtro de pastas é aplicado ao caminho relativo à raiz do repositório (na `main` ele olha o caminho absoluto).
+**Seleção de arquivos** (`src/docgen/harness.py`): extensões de código e configuração; ignora `node_modules`, `.git`, `__pycache__`, `doc`, `docs`, `env`, `venv`, `dist`, `build`, `test`, `tests` e pastas ocultas. O filtro de pastas é aplicado ao caminho relativo à raiz do repositório.
 
 **Top-k (opcional).** Para repositórios grandes, limita o envio a `k` arquivos: manifestos primeiro, depois código-fonte, por número de linhas, com no máximo 4.000 caracteres cada. Os mesmos `k` arquivos vão em todos os documentos, e o prompt de usuário passa a dizer "principais arquivos" em vez de "código-fonte completo". Sem top-k, todos os arquivos válidos são enviados.
 
-**Idioma.** `pt` ou `en`. Troca o prompt de sistema de cada documento, o prompt de usuário, o prompt do juiz e o prompt de reparo de Mermaid. Os prompts em português são os da `main`, sem alteração. Os em inglês são tradução fiel deles (mesma estrutura, mesmas regras e mesmos exemplos de Mermaid). O nome dos arquivos gerados não muda.
+**Idioma.** `pt` ou `en`. Troca o prompt de sistema de cada documento, o prompt de usuário, o prompt do juiz e o prompt de reparo de Mermaid. Os prompts em inglês são tradução fiel dos em português (mesma estrutura, mesmas regras e mesmos exemplos de Mermaid). O nome dos arquivos gerados não muda.
 
 **Reparo de Mermaid (opcional, desligado por padrão).** Valida os diagramas dos documentos C4 e, se encontrar problemas, faz uma chamada extra de correção. Não faz parte do harness original.
 
@@ -71,14 +71,14 @@ python -m benchmark.summarize_results evaluation_results.csv
 python -m unittest discover -s tests
 ```
 
-Sem argumentos, `benchmark.run_benchmark` percorre todos os `REPOSITORIES` e `OLLAMA_MODELS` de `benchmark/config.py`, como o `run_pipeline` da `main`. Opções: `--repos`, `--models`, `--languages`, `--top-k` (0 = todos os arquivos), `--num-ctx`, `--repeats`, `--seed-base`, `--judge-model`, `--no-judge`, `--mermaid-repair`, `--translated-dir`, `--resume`, `--host`, `--out`, `--csv-dir`.
+Sem argumentos, `benchmark.run_benchmark` percorre todos os `REPOSITORIES` e `OLLAMA_MODELS` de `benchmark/config.py`. Opções: `--repos`, `--models`, `--languages`, `--top-k` (0 = todos os arquivos), `--num-ctx`, `--repeats`, `--seed-base`, `--judge-model`, `--no-judge`, `--mermaid-repair`, `--translated-dir`, `--resume`, `--host`, `--out`, `--csv-dir`.
 
 ### Saídas
 
 ```text
 autodoc/<modelo com ":" trocado por "_">/<repositório>/<idioma>/
 ├── 01_tutorials.md ... C4_architecture_level3.md
-├── llm_eval.json        notas e sugestões do juiz por documento (mesma estrutura da main)
+├── llm_eval.json        notas e sugestões do juiz por documento
 └── run_info.json        configuração da última execução (top_k, num_ctx, run, seed, data)
 generation_metrics.csv   uma linha por documento
 evaluation_results.csv   uma linha por execução
@@ -86,25 +86,9 @@ evaluation_results.csv   uma linha por execução
 
 A pasta de saída inclui o idioma, mas não o top-k, o `num_ctx` nem o número da repetição. Execuções que diferem só nesses valores gravam os documentos na mesma pasta e a última sobrescreve a anterior; as métricas de todas ficam nos CSV, distinguidas pelas colunas `top_k`, `num_ctx` e `run`, e `run_info.json` indica qual execução produziu os arquivos.
 
-**`generation_metrics.csv`** começa com as colunas da `main` (`repository`, `document`, `model`, `prompt_tokens`, `output_tokens`, `generation_time_seconds`) e acrescenta `language`, `top_k`, `num_ctx`, `run`, `truncated_calls`, `mermaid_repaired` e as notas do juiz do documento. Como na `main`, `repository` é a URL.
+**`generation_metrics.csv`** tem as colunas `repository`, `document`, `model`, `prompt_tokens`, `output_tokens`, `generation_time_seconds` e também `language`, `top_k`, `num_ctx`, `run`, `truncated_calls`, `mermaid_repaired` e as notas do juiz do documento. `repository` é a URL.
 
-**`evaluation_results.csv`** começa com `model`, `repository`, `meteor`, `bert_precision`, `bert_recall`, `bert_f1` e acrescenta `repository_url`, `language`, `top_k`, `num_ctx`, `run`, `seed`, `reference`, `overlap_score`, tempo, tokens, `truncated_calls`, arquivos válidos e enviados, as médias do juiz (`judge_*`), `references_*`, energia e VRAM. Como na `main`, `repository` é o nome da pasta.
-
-## Correspondência com a `main`
-
-| `main` (`src/`) | Este projeto |
-|---|---|
-| `pipeline.py`: `run_pipeline(repository_urls, ollama_models)` | `benchmark/run_benchmark.py`: `run_pipeline(...)` |
-| `pipeline.py`: laço interno que gera os 7 documentos | `src/docgen/pipeline.py`: `generate_documents` |
-| `pipeline.py`: `scan_repository` | `src/docgen/harness.py`: `scan_repository` (e `scan_files`, que devolve a lista) |
-| `pipeline.py`: `download_github_repository` | `src/docgen/repository.py`: `download_github_repository` |
-| `pipeline.py`: `append_csv_metric` | `benchmark/run_benchmark.py`: `append_csv_metric` |
-| `prompts.py`: `SYSTEM_PROMPTS`, `EVAL_PROMPTS` | `src/docgen/prompts/pt.py` e `en.py` |
-| `config.py`: `REPOSITORIES`, `OLLAMA_MODELS`, `JUDGE_MODEL`, `OUTPUT_DIR`, `OLLAMA_API_URL`, `CSV_REPORT_FILE` | `benchmark/config.py` |
-| `config.py`: `IGNORABLE_FOLDERS`, `VALID_FILE_EXTENSIONS` | `src/docgen/harness.py` |
-| `eval.py`: `evaluate_documentation` | `src/docgen/evaluation.py` |
-| `llm_eval.py`: `evaluate_markdown`, `parse_llm_json` | `src/docgen/evaluation.py` |
-| `app.py` | `apps/streamlit/app.py` (chama o pipeline direto, sem API) |
+**`evaluation_results.csv`** tem as colunas `model`, `repository`, `meteor`, `bert_precision`, `bert_recall`, `bert_f1` e também `repository_url`, `language`, `top_k`, `num_ctx`, `run`, `seed`, `reference`, `overlap_score`, tempo, tokens, `truncated_calls`, arquivos válidos e enviados, as médias do juiz (`judge_*`), `references_*`, energia e VRAM. `repository` é o nome da pasta.
 
 ## Docker
 
